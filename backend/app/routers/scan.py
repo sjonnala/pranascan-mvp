@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
+from app.middleware.auth import require_auth
 from app.models.scan import ScanResult, ScanSession, SessionStatus
 from app.schemas.scan import (
     ScanHistoryItem,
@@ -46,19 +47,23 @@ def _compute_trend_alert(
 async def create_scan_session(
     body: ScanSessionCreateRequest,
     db: AsyncSession = Depends(get_db),
+    auth_user_id: str = Depends(require_auth),
 ) -> ScanSessionResponse:
     """
     Initiate a new scan session.
     Requires active consent — returns 403 if not consented.
     """
-    if not await consent_service.has_active_consent(db, body.user_id):
+    # Use authenticated user_id; ignore any user_id in body to prevent spoofing
+    user_id = auth_user_id
+
+    if not await consent_service.has_active_consent(db, user_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Active consent required to start a scan session. Please grant consent first.",
         )
 
     session = ScanSession(
-        user_id=body.user_id,
+        user_id=user_id,
         device_model=body.device_model,
         app_version=body.app_version,
         status=SessionStatus.INITIATED,
@@ -78,6 +83,7 @@ async def complete_scan_session(
     session_id: str,
     body: ScanResultSubmit,
     db: AsyncSession = Depends(get_db),
+    auth_user_id: str = Depends(require_auth),
 ) -> ScanResultResponse:
     """
     Submit wellness indicator results for a scan session.
@@ -94,6 +100,10 @@ async def complete_scan_session(
 
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    # Ensure authenticated user owns this session
+    if session.user_id != auth_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Session not found")
 
     if session.status != SessionStatus.INITIATED:
         raise HTTPException(
@@ -162,13 +172,14 @@ async def complete_scan_session(
 async def get_scan_session(
     session_id: str,
     db: AsyncSession = Depends(get_db),
+    auth_user_id: str = Depends(require_auth),
 ) -> ScanSessionWithResult:
     """Fetch a single scan session with its result (if completed)."""
     stmt = select(ScanSession).where(ScanSession.id == session_id)
     result = await db.execute(stmt)
     session = result.scalar_one_or_none()
 
-    if session is None:
+    if session is None or session.user_id != auth_user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
     result_stmt = select(ScanResult).where(ScanResult.session_id == session_id)
@@ -183,15 +194,17 @@ async def get_scan_session(
 
 @router.get("/history", response_model=ScanHistoryResponse)
 async def get_scan_history(
-    user_id: str,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    auth_user_id: str = Depends(require_auth),
 ) -> ScanHistoryResponse:
     """
     Paginated scan history for a user, with trend deltas vs prior 7-day average.
     """
     offset = (page - 1) * page_size
+
+    user_id = auth_user_id
 
     # Total count
     count_stmt = select(func.count(ScanSession.id)).where(

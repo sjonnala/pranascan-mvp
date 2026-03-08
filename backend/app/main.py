@@ -9,7 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import settings
 from app.database import create_all_tables
 from app.middleware.audit_log import audit_log_middleware
-from app.routers import audit, consent, scan
+from app.routers import audit, auth, consent, scan
 
 
 @asynccontextmanager
@@ -48,6 +48,7 @@ app.add_middleware(BaseHTTPMiddleware, dispatch=audit_log_middleware)
 
 # Routers
 API_PREFIX = "/api/v1"
+app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(consent.router, prefix=API_PREFIX)
 app.include_router(scan.router, prefix=API_PREFIX)
 app.include_router(audit.router, prefix=API_PREFIX)

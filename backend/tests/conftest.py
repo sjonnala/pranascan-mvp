@@ -1,11 +1,13 @@
 """Pytest fixtures for PranaScan backend tests."""
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.database import Base, get_db
 from app.main import app
+from app.services.auth_service import create_access_token
 
 # Use an in-memory SQLite database for tests
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -59,3 +61,17 @@ async def client(db_session: AsyncSession):
 # Helpers
 TEST_USER_ID = "00000000-0000-0000-0000-000000000001"
 TEST_USER_ID_2 = "00000000-0000-0000-0000-000000000002"
+
+
+@pytest.fixture
+def auth_headers() -> dict[str, str]:
+    """Valid Authorization header for TEST_USER_ID."""
+    token = create_access_token(TEST_USER_ID)
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def auth_headers_user2() -> dict[str, str]:
+    """Valid Authorization header for TEST_USER_ID_2."""
+    token = create_access_token(TEST_USER_ID_2)
+    return {"Authorization": f"Bearer {token}"}

@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.middleware.auth import require_auth
 from app.models.audit import AuditLog
 from app.schemas.audit import AuditLogListResponse, AuditLogResponse
 
@@ -18,6 +19,7 @@ async def list_audit_logs(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
+    _auth_user_id: str = Depends(require_auth),
 ) -> AuditLogListResponse:
     """
     List immutable audit log entries.

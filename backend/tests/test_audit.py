@@ -9,9 +9,16 @@ from tests.conftest import TEST_USER_ID
 
 
 @pytest.mark.asyncio
-async def test_audit_log_list_empty(client: AsyncClient):
-    """GET /audit/logs returns empty list when no logs exist."""
+async def test_audit_log_requires_auth(client: AsyncClient):
+    """GET /audit/logs returns 403 without auth."""
     resp = await client.get("/api/v1/audit/logs")
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_audit_log_list_empty(client: AsyncClient, auth_headers: dict):
+    """GET /audit/logs returns empty list when no logs exist."""
+    resp = await client.get("/api/v1/audit/logs", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["items"] == []
@@ -19,7 +26,7 @@ async def test_audit_log_list_empty(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_audit_log_created_via_service(client: AsyncClient, db_session: AsyncSession):
+async def test_audit_log_created_via_service(client: AsyncClient, db_session: AsyncSession, auth_headers: dict):
     """log_event service creates an immutable audit record."""
     entry = await log_event(
         db_session,
@@ -39,7 +46,7 @@ async def test_audit_log_created_via_service(client: AsyncClient, db_session: As
 
 
 @pytest.mark.asyncio
-async def test_audit_log_filter_by_user(client: AsyncClient, db_session: AsyncSession):
+async def test_audit_log_filter_by_user(client: AsyncClient, db_session: AsyncSession, auth_headers: dict):
     """Audit logs can be filtered by user_id."""
     await log_event(
         db_session,
@@ -59,7 +66,11 @@ async def test_audit_log_filter_by_user(client: AsyncClient, db_session: AsyncSe
     )
     await db_session.commit()
 
-    resp = await client.get("/api/v1/audit/logs", params={"user_id": TEST_USER_ID})
+    resp = await client.get(
+        "/api/v1/audit/logs",
+        params={"user_id": TEST_USER_ID},
+        headers=auth_headers,
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1
@@ -67,14 +78,14 @@ async def test_audit_log_filter_by_user(client: AsyncClient, db_session: AsyncSe
 
 
 @pytest.mark.asyncio
-async def test_audit_logs_immutable_no_delete_endpoint(client: AsyncClient):
+async def test_audit_logs_immutable_no_delete_endpoint(client: AsyncClient, auth_headers: dict):
     """There must be no DELETE endpoint for audit logs."""
-    resp = await client.delete("/api/v1/audit/logs/some-id")
+    resp = await client.delete("/api/v1/audit/logs/some-id", headers=auth_headers)
     assert resp.status_code in (404, 405)
 
 
 @pytest.mark.asyncio
-async def test_audit_log_pagination(client: AsyncClient, db_session: AsyncSession):
+async def test_audit_log_pagination(client: AsyncClient, db_session: AsyncSession, auth_headers: dict):
     """Audit logs support pagination."""
     for i in range(5):
         await log_event(
@@ -90,6 +101,7 @@ async def test_audit_log_pagination(client: AsyncClient, db_session: AsyncSessio
     resp = await client.get(
         "/api/v1/audit/logs",
         params={"user_id": TEST_USER_ID, "page": 1, "page_size": 3},
+        headers=auth_headers,
     )
     assert resp.status_code == 200
     data = resp.json()

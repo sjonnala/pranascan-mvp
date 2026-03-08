@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.middleware.auth import require_auth
 from app.schemas.consent import (
     ConsentDeletionRequest,
     ConsentGrantRequest,
@@ -30,6 +31,7 @@ async def grant_consent(
     body: ConsentGrantRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    _user_id: str = Depends(require_auth),
 ) -> ConsentRecordResponse:
     """
     Record informed consent for wellness screening.
@@ -53,6 +55,7 @@ async def revoke_consent(
     body: ConsentRevokeRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    _user_id: str = Depends(require_auth),
 ) -> ConsentRecordResponse:
     """
     Revoke consent. Appends a revocation record; does not delete prior records.
@@ -76,6 +79,7 @@ async def request_deletion(
     body: ConsentDeletionRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    _user_id: str = Depends(require_auth),
 ) -> ConsentRecordResponse:
     """
     Request data deletion. Data will be soft-deleted after a 30-day legal hold period.
