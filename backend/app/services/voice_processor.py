@@ -166,7 +166,7 @@ def process_audio(samples: Sequence[float]) -> VoiceResult:
 
     # Find peaks in filtered voiced signal (each peak ≈ one glottal cycle)
     min_period_samples = int(SAMPLE_RATE / F0_HIGH_HZ)  # shortest cycle
-    max_period_samples = int(SAMPLE_RATE / F0_LOW_HZ)   # longest cycle
+    max_period_samples = int(SAMPLE_RATE / F0_LOW_HZ)  # longest cycle
 
     peaks, properties = signal.find_peaks(
         voiced_filtered,

@@ -34,9 +34,8 @@ async def audit_log_middleware(request: Request, call_next: RequestResponseEndpo
     if hasattr(request.state, "user_id"):
         user_id = request.state.user_id
 
-    ip_address = (
-        request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-        or (request.client.host if request.client else None)
+    ip_address = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (
+        request.client.host if request.client else None
     )
 
     action = f"{request.method}:{path}"

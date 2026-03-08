@@ -146,7 +146,11 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
     except Exception:  # noqa: BLE001
         flags.append("filter_error")
         return RppgResult(
-            hr_bpm=None, hrv_ms=None, respiratory_rate=None, quality_score=quality_score, flags=flags
+            hr_bpm=None,
+            hrv_ms=None,
+            respiratory_rate=None,
+            quality_score=quality_score,
+            flags=flags,
         )
 
     # -----------------------------------------------------------------------
@@ -158,7 +162,11 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
     if len(peaks) < 2:
         flags.append("insufficient_peaks")
         return RppgResult(
-            hr_bpm=None, hrv_ms=None, respiratory_rate=None, quality_score=quality_score, flags=flags
+            hr_bpm=None,
+            hrv_ms=None,
+            respiratory_rate=None,
+            quality_score=quality_score,
+            flags=flags,
         )
 
     # IBI in seconds

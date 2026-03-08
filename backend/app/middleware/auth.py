@@ -37,7 +37,9 @@ async def require_auth(
         )
 
     exp = payload.get("exp")
-    if exp is not None and datetime.fromtimestamp(exp, tz=timezone.utc) < datetime.now(tz=timezone.utc):
+    if exp is not None and datetime.fromtimestamp(exp, tz=timezone.utc) < datetime.now(
+        tz=timezone.utc
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired.",

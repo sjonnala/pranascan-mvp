@@ -18,9 +18,8 @@ router = APIRouter(prefix="/consent", tags=["Consent"])
 
 
 def _extract_client_info(request: Request) -> tuple[str | None, str | None]:
-    ip = (
-        request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-        or (request.client.host if request.client else None)
+    ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (
+        request.client.host if request.client else None
     )
     ua = request.headers.get("user-agent")
     return ip, ua

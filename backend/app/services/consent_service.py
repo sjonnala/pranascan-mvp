@@ -127,9 +127,7 @@ async def get_consent_status(db: AsyncSession, user_id: str) -> ConsentStatusRes
 
     # Active consent: most recent action is a grant (grant comes after any revoke)
     has_active_consent = (
-        granted_at is not None
-        and not deletion_requested
-        and last_grant_idx > last_revoke_idx
+        granted_at is not None and not deletion_requested and last_grant_idx > last_revoke_idx
     )
 
     return ConsentStatusResponse(
