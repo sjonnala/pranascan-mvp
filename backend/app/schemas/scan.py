@@ -6,6 +6,15 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 
+class FrameSampleSchema(BaseModel):
+    """Single video frame colour channel means (sent instead of raw pixels)."""
+
+    t_ms: float = Field(..., ge=0, description="Timestamp from scan start in milliseconds")
+    r_mean: float = Field(..., ge=0.0, le=255.0)
+    g_mean: float = Field(..., ge=0.0, le=255.0)
+    b_mean: float = Field(..., ge=0.0, le=255.0)
+
+
 class ScanSessionCreateRequest(BaseModel):
     user_id: str = Field(..., description="Pseudonymous user UUID")
     device_model: str | None = Field(default=None, max_length=128)
@@ -14,12 +23,34 @@ class ScanSessionCreateRequest(BaseModel):
 
 class ScanResultSubmit(BaseModel):
     """
-    Wellness indicator values computed on-device.
+    Wellness indicator values submitted after a scan session.
+
+    Clients may supply either:
+    - Pre-computed values (hr_bpm, hrv_ms, respiratory_rate) — legacy path, or
+    - frame_data: per-frame RGB means for server-side rPPG processing, or
+    - Both (server-side values override client values when frame_data present)
+
     Raw video/audio is never sent — edge processing only.
     These are wellness indicators, not diagnostic values.
     """
 
-    # Wellness indicators
+    # Optional frame data for server-side rPPG processing (Sprint 2+)
+    # Each entry: {t_ms, r_mean, g_mean, b_mean}
+    frame_data: list[FrameSampleSchema] | None = Field(
+        default=None,
+        description="Per-frame RGB means for server-side rPPG. Overrides client-computed values.",
+        max_length=1800,  # ~60s at 30fps ceiling
+    )
+
+    # Optional audio samples for server-side voice DSP (Sprint 2+)
+    # Normalised amplitude values, downsampled to 4410 Hz
+    audio_samples: list[float] | None = Field(
+        default=None,
+        description="Normalised audio amplitude samples (4410 Hz) for voice DSP.",
+        max_length=22_050,  # 5s at 4410 Hz
+    )
+
+    # Pre-computed wellness indicators (used when frame_data/audio_samples absent)
     hr_bpm: float | None = Field(default=None, ge=30.0, le=220.0)
     hrv_ms: float | None = Field(default=None, ge=0.0, le=500.0)
     respiratory_rate: float | None = Field(default=None, ge=4.0, le=60.0)

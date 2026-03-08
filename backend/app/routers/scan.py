@@ -21,6 +21,8 @@ from app.schemas.scan import (
 )
 from app.services import consent_service
 from app.services.quality_gate import run_quality_gate
+from app.services.rppg_processor import build_frame_samples, process_frames
+from app.services.voice_processor import build_audio_samples, process_audio
 
 router = APIRouter(prefix="/scans", tags=["Scans"])
 
@@ -110,6 +112,37 @@ async def complete_scan_session(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Session is already in status '{session.status}'",
         )
+
+    # -------------------------------------------------------------------
+    # Server-side rPPG processing (if frame_data provided)
+    # -------------------------------------------------------------------
+    if body.frame_data:
+        frames = build_frame_samples([f.model_dump() for f in body.frame_data])
+        rppg = process_frames(frames)
+        if rppg.hr_bpm is not None:
+            body = body.model_copy(
+                update={
+                    "hr_bpm": rppg.hr_bpm,
+                    "hrv_ms": rppg.hrv_ms,
+                    "respiratory_rate": rppg.respiratory_rate,
+                    "quality_score": max(body.quality_score, rppg.quality_score),
+                }
+            )
+
+    # -------------------------------------------------------------------
+    # Server-side voice DSP processing (if audio_samples provided)
+    # -------------------------------------------------------------------
+    if body.audio_samples:
+        audio = build_audio_samples(body.audio_samples)
+        voice = process_audio(audio)
+        if voice.jitter_pct is not None:
+            body = body.model_copy(
+                update={
+                    "voice_jitter_pct": voice.jitter_pct,
+                    "voice_shimmer_pct": voice.shimmer_pct,
+                    "audio_snr_db": voice.snr_db if voice.snr_db is not None else body.audio_snr_db,
+                }
+            )
 
     # Quality gate
     gate = run_quality_gate(body)
