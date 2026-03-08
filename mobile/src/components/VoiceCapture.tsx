@@ -93,7 +93,7 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
     <View style={styles.container} testID="voice-capture">
       <Text style={styles.title}>Voice Check</Text>
       <Text style={styles.subtitle}>
-        Say "Aaah" in a steady tone for 5 seconds in a quiet space.
+        Say &quot;Aaah&quot; in a steady tone for 5 seconds in a quiet space.
       </Text>
 
       {/* Waveform visualisation */}
