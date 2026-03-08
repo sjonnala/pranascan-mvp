@@ -4,7 +4,6 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.audit import AuditLog
 from app.services.audit_service import log_event
 from tests.conftest import TEST_USER_ID
 
