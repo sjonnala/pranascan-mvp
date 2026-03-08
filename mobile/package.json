@@ -13,25 +13,30 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "expo": "~51.0.0",
-    "expo-camera": "~15.0.0",
-    "expo-av": "~14.0.0",
-    "expo-status-bar": "~1.12.1",
-    "react": "18.2.0",
-    "react-native": "0.74.5",
+    "@react-native-async-storage/async-storage": "1.23.1",
     "@react-navigation/native": "^6.1.17",
     "@react-navigation/stack": "^6.3.29",
+    "axios": "^1.7.2",
+    "expo": "~51.0.0",
+    "expo-av": "~14.0.0",
+    "expo-camera": "~15.0.0",
+    "expo-status-bar": "~1.12.1",
+    "jest-expo": "~51.0.4",
+    "react": "18.2.0",
+    "react-native": "0.74.5",
     "react-native-safe-area-context": "4.10.5",
-    "react-native-screens": "3.31.1",
-    "@react-native-async-storage/async-storage": "1.23.1",
-    "axios": "^1.7.2"
+    "react-native-screens": "3.31.1"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
+    "@testing-library/react-native": "^12.4.3",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^25.3.5",
     "@types/react": "~18.2.79",
     "@types/react-native": "~0.73.0",
     "@typescript-eslint/eslint-plugin": "^7.7.1",
     "@typescript-eslint/parser": "^7.7.1",
+    "babel-jest": "^29.7.0",
     "babel-preset-expo": "~11.0.0",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
@@ -39,24 +44,29 @@
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-native": "^4.1.0",
     "jest": "^29.7.0",
-    "jest-expo": "~51.0.0",
     "prettier": "^3.2.5",
-    "typescript": "~5.3.3",
-    "@testing-library/react-native": "^12.4.3",
-    "@testing-library/jest-native": "^5.4.3",
-    "babel-jest": "^29.7.0"
+    "react-test-renderer": "18.2.0",
+    "typescript": "~5.3.3"
   },
   "jest": {
     "preset": "jest-expo",
     "transformIgnorePatterns": [
       "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg)"
     ],
-    "moduleFileExtensions": ["ts", "tsx", "js", "jsx"]
+    "moduleFileExtensions": [
+      "ts",
+      "tsx",
+      "js",
+      "jsx"
+    ]
   },
   "prettier": {
     "semi": true,
     "singleQuote": true,
     "trailingComma": "es5",
     "printWidth": 100
+  },
+  "overrides": {
+    "react-test-renderer": "18.2.0"
   }
 }
