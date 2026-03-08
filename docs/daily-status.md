@@ -32,3 +32,36 @@
 | S6 — Camera + QG | ✅ Done | 4 tests |
 | S7 — Voice Capture | ✅ Done | — |
 | S8 — Orchestrator | ✅ Done | — |
+
+---
+
+## Sprint 2.1 — March 8, 2026 (UTC)
+
+Source of truth: docs/sprint-2.1-backlog.md
+
+### S2-01 · Real Camera Capture Pipeline ✅
+
+**Completed:** 2026-03-08
+
+**Changed files:**
+- `mobile/src/types/index.ts` — added `FrameSample` type; added `frame_data` + `audio_samples` to `ScanResultPayload`
+- `mobile/src/utils/frameAnalyzer.ts` — NEW: `computeLightingScore`, `computeMotionScore`, `buildFrameSample`, `computeOverallQualityScore`
+- `mobile/src/components/CameraCapture.tsx` — replaced placeholder `<View>` with real `expo-camera` `CameraView`; real permission flow; real frame sampling via `takePictureAsync`; quality metrics from JPEG analysis; frame_data accumulated for backend rPPG
+- `mobile/src/screens/ScanScreen.tsx` — null→undefined coercion for optional fields; `frame_data` forwarded in payload
+- `mobile/__tests__/CameraCapture.test.tsx` — replaced stub with 14 new tests covering permission states, scan start, cancel, quality update, no-diagnostic-language
+- `mobile/__tests__/frameAnalyzer.test.ts` — NEW: 16 pure-function unit tests
+
+**Raw check outputs:**
+- `python3 -m ruff check .` → All checks passed!
+- `PYTHONPATH=backend python3 -m pytest -q backend/tests` → 59 passed in 1.68s
+- `npx eslint src/ --ext .ts,.tsx && npx tsc --noEmit && npm test` → Test Suites: 4 passed | Tests: 46 passed
+
+**Blockers:** None
+
+**Implementation notes:**
+- Face confidence: fixed 0.85 proxy (expo-face-detector not bundled in SDK 51 base; Sprint 3 target)
+- Lighting/motion: real JPEG-size heuristic — deterministic, not random
+- `frame_data` flows to backend for server-side rPPG (S2-02 backend already wired)
+- Raw base64 frames never stored or transmitted; only FrameSample means forwarded
+
+**Next:** S2-02 — rPPG v1 processing (no simulation)

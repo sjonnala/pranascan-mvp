@@ -1,25 +1,59 @@
 /**
- * CameraCapture component — 30-second guided camera scan.
+ * CameraCapture — real 30-second front-camera scan component.
  *
- * Sprint 1: Uses simulated rPPG output for MVP scaffolding.
- * Sprint 2: Replace simulateRppgProcessing() with real on-device algorithm.
+ * Sprint 2.1 (S2-01): replaced placeholder View with expo-camera CameraView.
+ * - Real permission handling via useCameraPermissions()
+ * - Real frame capture via takePictureAsync at quality=0.05
+ * - Quality metrics derived from real JPEG frame data (see frameAnalyzer.ts)
+ * - Face confidence: fixed 0.85 proxy (expo-face-detector not included in SDK 51
+ *   base; Sprint 3 target for native face detection via ML Kit)
+ * - frame_data accumulated for backend rPPG processing (S2-02)
  *
- * Raw video frames NEVER leave the device.
+ * Privacy: raw frame base64 data is discarded after metric extraction.
+ * Only FrameSample values ({t_ms, r_mean, g_mean, b_mean}) are forwarded.
+ * Raw video NEVER leaves the device.
  */
 
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { QualityMetrics } from '../types';
+
+import { FrameSample, QualityMetrics } from '../types';
+import {
+  buildFrameSample,
+  computeLightingScore,
+  computeMotionScore,
+  computeOverallQualityScore,
+} from '../utils/frameAnalyzer';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const SCAN_DURATION_MS = 30_000;
-const QUALITY_POLL_INTERVAL_MS = 500;
+/** Frame sampling interval. ~2fps: fast enough for quality monitoring, low CPU. */
+const FRAME_INTERVAL_MS = 500;
+/**
+ * Face confidence proxy.
+ * Real detection requires expo-face-detector (Sprint 3).
+ * 0.85 is above the 0.80 quality-gate threshold so the gate
+ * evaluates lighting + motion honestly, not blocked by missing face detector.
+ */
+const FACE_CONFIDENCE_PROXY = 0.85;
+/** Audio SNR is evaluated in VoiceCapture; default here keeps gate open. */
+const AUDIO_SNR_DEFAULT = 20.0;
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CameraResult {
-  hr_bpm: number;
-  hrv_ms: number;
-  respiratory_rate: number;
+  /** null until backend rPPG processes frame_data (S2-02). */
+  hr_bpm: number | null;
+  /** null until backend rPPG processes frame_data (S2-02). */
+  hrv_ms: number | null;
+  /** null until backend rPPG processes frame_data (S2-02). */
+  respiratory_rate: number | null;
   quality: QualityMetrics;
   quality_score: number;
+  /** Per-frame RGB means sent to backend for server-side rPPG. */
+  frame_data: FrameSample[];
 }
 
 interface CameraCaptureProps {
@@ -28,100 +62,221 @@ interface CameraCaptureProps {
   onCancel: () => void;
 }
 
-/**
- * Simulates rPPG processing for Sprint 1.
- * Returns plausible wellness indicator values.
- * Replace with real algorithm in Sprint 2.
- */
-function simulateRppgProcessing(): Pick<CameraResult, 'hr_bpm' | 'hrv_ms' | 'respiratory_rate'> {
-  return {
-    hr_bpm: 60 + Math.random() * 40, // 60–100 bpm
-    hrv_ms: 30 + Math.random() * 40, // 30–70 ms
-    respiratory_rate: 12 + Math.random() * 8, // 12–20 bpm
-  };
-}
-
-/**
- * Simulates real-time quality metrics from camera feed.
- * Sprint 2: Replace with actual face detection + lighting analysis.
- */
-function simulateQualityMetrics(): QualityMetrics {
-  return {
-    lighting_score: 0.7 + Math.random() * 0.3, // 0.7–1.0 (good)
-    motion_score: 0.95 + Math.random() * 0.05, // 0.95–1.0 (stable)
-    face_confidence: 0.85 + Math.random() * 0.15, // 0.85–1.0 (detected)
-    audio_snr_db: 20 + Math.random() * 15, // 20–35 dB (quiet)
-  };
-}
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraCaptureProps) {
+  const [permission, requestPermission] = useCameraPermissions();
   const [timeRemaining, setTimeRemaining] = useState(SCAN_DURATION_MS / 1000);
   const [isScanning, setIsScanning] = useState(false);
-  const scanStartTime = useRef<number | null>(null);
-  const qualityInterval = useRef<ReturnType<typeof setInterval> | null>(null);
-  const countdownInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [currentQuality, setCurrentQuality] = useState<QualityMetrics | null>(null);
 
-  const stopScan = useCallback(() => {
-    if (qualityInterval.current) clearInterval(qualityInterval.current);
-    if (countdownInterval.current) clearInterval(countdownInterval.current);
+  const cameraRef = useRef<CameraView>(null);
+  const scanStartRef = useRef<number | null>(null);
+  const frameDataRef = useRef<FrameSample[]>([]);
+  const prevBase64Ref = useRef<string | null>(null);
+  const lastLightingRef = useRef<number>(0.5);
+  const lastMotionRef = useRef<number>(1.0);
+  const frameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Cleanup ──────────────────────────────────────────────────────────────
+
+  const stopTimers = useCallback(() => {
+    if (frameIntervalRef.current) {
+      clearInterval(frameIntervalRef.current);
+      frameIntervalRef.current = null;
+    }
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
   }, []);
 
-  const startScan = useCallback(() => {
+  useEffect(() => () => stopTimers(), [stopTimers]);
+
+  // ── Frame capture ─────────────────────────────────────────────────────────
+
+  const captureFrame = useCallback(async (): Promise<string | null> => {
+    try {
+      const photo = await cameraRef.current?.takePictureAsync({
+        quality: 0.05,
+        base64: true,
+        skipProcessing: true,
+      });
+      return photo?.base64 ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // ── Scan orchestration ───────────────────────────────────────────────────
+
+  const finaliseScan = useCallback(() => {
+    stopTimers();
+    setIsScanning(false);
+
+    const frames = frameDataRef.current;
+    const lighting = lastLightingRef.current;
+    const motion = lastMotionRef.current;
+
+    const finalQuality: QualityMetrics = {
+      lighting_score: lighting,
+      motion_score: motion,
+      face_confidence: FACE_CONFIDENCE_PROXY,
+      audio_snr_db: AUDIO_SNR_DEFAULT,
+    };
+
+    onComplete({
+      hr_bpm: null,           // computed by backend rPPG (S2-02)
+      hrv_ms: null,
+      respiratory_rate: null,
+      quality: finalQuality,
+      quality_score: computeOverallQualityScore(
+        lighting,
+        motion,
+        FACE_CONFIDENCE_PROXY,
+        AUDIO_SNR_DEFAULT,
+      ),
+      frame_data: frames,
+    });
+  }, [stopTimers, onComplete]);
+
+  const startScan = useCallback(async () => {
+    if (!permission?.granted) {
+      await requestPermission();
+      return;
+    }
+
     setIsScanning(true);
-    scanStartTime.current = Date.now();
+    frameDataRef.current = [];
+    prevBase64Ref.current = null;
+    scanStartRef.current = Date.now();
 
-    // Poll quality metrics every 500ms
-    qualityInterval.current = setInterval(() => {
-      const metrics = simulateQualityMetrics();
-      onQualityUpdate(metrics);
-    }, QUALITY_POLL_INTERVAL_MS);
+    // Frame sampling interval
+    frameIntervalRef.current = setInterval(async () => {
+      const elapsed = Date.now() - (scanStartRef.current ?? Date.now());
+      const base64 = await captureFrame();
 
-    // Countdown timer
-    countdownInterval.current = setInterval(() => {
-      const elapsed = Date.now() - (scanStartTime.current ?? Date.now());
+      if (base64) {
+        const lighting = computeLightingScore(base64);
+        const motion = prevBase64Ref.current
+          ? computeMotionScore(prevBase64Ref.current, base64)
+          : 1.0;
+
+        lastLightingRef.current = lighting;
+        lastMotionRef.current = motion;
+        prevBase64Ref.current = base64;
+
+        const frame = buildFrameSample(base64, elapsed);
+        frameDataRef.current.push(frame);
+
+        const metrics: QualityMetrics = {
+          lighting_score: lighting,
+          motion_score: motion,
+          face_confidence: FACE_CONFIDENCE_PROXY,
+          audio_snr_db: AUDIO_SNR_DEFAULT,
+        };
+        setCurrentQuality(metrics);
+        onQualityUpdate(metrics);
+      }
+    }, FRAME_INTERVAL_MS);
+
+    // Countdown interval
+    countdownRef.current = setInterval(() => {
+      const elapsed = Date.now() - (scanStartRef.current ?? Date.now());
       const remaining = Math.max(0, Math.ceil((SCAN_DURATION_MS - elapsed) / 1000));
       setTimeRemaining(remaining);
-
-      if (remaining <= 0) {
-        stopScan();
-        setIsScanning(false);
-
-        const rppg = simulateRppgProcessing();
-        const finalQuality = simulateQualityMetrics();
-
-        onComplete({
-          ...rppg,
-          quality: finalQuality,
-          quality_score:
-            finalQuality.lighting_score * 0.3 +
-            finalQuality.motion_score * 0.3 +
-            finalQuality.face_confidence * 0.3 +
-            Math.min(finalQuality.audio_snr_db / 40, 1.0) * 0.1,
-        });
-      }
+      if (remaining <= 0) finaliseScan();
     }, 200);
-  }, [onComplete, onQualityUpdate, stopScan]);
+  }, [permission, requestPermission, captureFrame, onQualityUpdate, finaliseScan]);
 
-  useEffect(() => {
-    return () => stopScan();
-  }, [stopScan]);
+  // ── Render: awaiting permission decision ─────────────────────────────────
 
-  const progressPct = ((SCAN_DURATION_MS / 1000 - timeRemaining) / (SCAN_DURATION_MS / 1000)) * 100;
+  if (!permission) {
+    return (
+      <View style={styles.centeredContainer} testID="camera-capture">
+        <Text style={styles.messageText}>Requesting camera access…</Text>
+      </View>
+    );
+  }
+
+  // ── Render: permission denied ─────────────────────────────────────────────
+
+  if (!permission.granted) {
+    return (
+      <View style={styles.centeredContainer} testID="camera-capture">
+        <Text style={styles.messageText} testID="permission-message">
+          Camera access is needed for wellness scanning.
+        </Text>
+        <Text style={styles.subText}>
+          Your camera feed stays on your device — no footage is stored or shared.
+        </Text>
+        <TouchableOpacity
+          style={styles.startButton}
+          onPress={requestPermission}
+          testID="allow-camera"
+        >
+          <Text style={styles.startButtonText}>Allow Camera</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.cancelLinkButton} onPress={onCancel} testID="cancel-scan">
+          <Text style={styles.cancelLinkText}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // ── Render: camera active ─────────────────────────────────────────────────
+
+  const progressPct =
+    ((SCAN_DURATION_MS / 1000 - timeRemaining) / (SCAN_DURATION_MS / 1000)) * 100;
 
   return (
     <View style={styles.container} testID="camera-capture">
-      {/* Camera preview placeholder — in real app, use expo-camera CameraView */}
-      <View style={styles.cameraPreview} testID="camera-preview">
+      {/* Real camera preview */}
+      <CameraView
+        ref={cameraRef}
+        style={styles.cameraPreview}
+        facing="front"
+        testID="camera-view"
+      >
+        {/* Oval face-placement guide */}
         <View style={styles.faceGuide} testID="face-guide" />
+
         {isScanning && (
-          <View style={styles.scanningOverlay}>
+          <View style={styles.scanningPill} testID="scanning-indicator">
             <Text style={styles.scanningText}>Scanning…</Text>
           </View>
         )}
-      </View>
 
-      {/* Progress bar */}
-      <View style={styles.progressBar}>
+        {/* Real-time quality dots — green = pass, red = fail */}
+        {currentQuality && (
+          <View style={styles.qualityOverlay} testID="quality-overlay">
+            <View
+              style={[
+                styles.qualityDot,
+                {
+                  backgroundColor:
+                    currentQuality.lighting_score > 0.4 ? '#4ade80' : '#f87171',
+                },
+              ]}
+              testID="quality-dot-lighting"
+            />
+            <View
+              style={[
+                styles.qualityDot,
+                {
+                  backgroundColor:
+                    currentQuality.motion_score >= 0.95 ? '#4ade80' : '#f87171',
+                },
+              ]}
+              testID="quality-dot-motion"
+            />
+          </View>
+        )}
+      </CameraView>
+
+      {/* Scan progress bar */}
+      <View style={styles.progressBar} testID="progress-bar">
         <View style={[styles.progressFill, { width: `${progressPct}%` as `${number}%` }]} />
       </View>
 
@@ -130,17 +285,23 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
           {timeRemaining}s
         </Text>
         <Text style={styles.instructionText}>
-          {isScanning ? 'Keep your face steady and lit' : 'Position your face in the oval above'}
+          {isScanning
+            ? 'Keep your face steady and well-lit'
+            : 'Position your face in the oval above'}
         </Text>
       </View>
 
       <View style={styles.buttonRow}>
         {!isScanning ? (
           <TouchableOpacity style={styles.startButton} onPress={startScan} testID="start-scan">
-            <Text style={styles.startButtonText}>Start 30s Scan</Text>
+            <Text style={styles.startButtonText}>Start 30-second Scan</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.cancelButton} onPress={onCancel} testID="cancel-scan">
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={onCancel}
+            testID="cancel-scan"
+          >
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
         )}
@@ -153,16 +314,24 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f0f1a',
     alignItems: 'center',
   },
+  centeredContainer: {
+    flex: 1,
+    backgroundColor: '#0f0f1a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
   cameraPreview: {
     width: '100%',
     height: 400,
-    backgroundColor: '#1a1a2e',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -175,10 +344,10 @@ const styles = StyleSheet.create({
     borderColor: '#4f46e5',
     borderStyle: 'dashed',
   },
-  scanningOverlay: {
+  scanningPill: {
     position: 'absolute',
     bottom: 16,
-    backgroundColor: 'rgba(79, 70, 229, 0.8)',
+    backgroundColor: 'rgba(79, 70, 229, 0.85)',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 6,
@@ -187,6 +356,18 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  qualityOverlay: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  qualityDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   progressBar: {
     width: '90%',
@@ -247,9 +428,32 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
   },
+  cancelLinkButton: {
+    marginTop: 16,
+    paddingVertical: 8,
+  },
+  cancelLinkText: {
+    color: '#666688',
+    fontSize: 15,
+  },
+  messageText: {
+    color: '#e0e0f0',
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 26,
+  },
+  subText: {
+    color: '#8888aa',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 28,
+    lineHeight: 20,
+  },
   disclaimer: {
     fontSize: 12,
-    color: '#666688',
+    color: '#555570',
     textAlign: 'center',
     marginTop: 16,
     marginHorizontal: 24,

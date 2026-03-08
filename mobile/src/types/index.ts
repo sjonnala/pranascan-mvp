@@ -99,6 +99,19 @@ export interface ScanSessionWithResult {
   result: ScanResult | null;
 }
 
+// ─── Frame data ───────────────────────────────────────────────────────────────
+
+/**
+ * Per-frame colour channel means sent to the backend for server-side rPPG.
+ * Raw pixels NEVER leave the device — only per-frame aggregate means.
+ */
+export interface FrameSample {
+  t_ms: number;    // milliseconds from scan start
+  r_mean: number;  // 0–255 mean red channel
+  g_mean: number;  // 0–255 mean green channel
+  b_mean: number;  // 0–255 mean blue channel
+}
+
 // ─── Scan payload sent to backend ────────────────────────────────────────────
 
 export interface ScanResultPayload {
@@ -113,6 +126,10 @@ export interface ScanResultPayload {
   face_confidence?: number;
   audio_snr_db?: number;
   flags: QualityFlag[];
+  /** Per-frame RGB means for server-side rPPG processing. Raw video stays on device. */
+  frame_data?: FrameSample[];
+  /** Normalised audio amplitude samples for server-side voice DSP. */
+  audio_samples?: number[];
 }
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
