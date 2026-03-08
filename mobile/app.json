@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "PranaScan",
+    "slug": "pranascan",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.pranascan.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "PranaScan uses your camera to measure wellness indicators like heart rate and respiratory rate. No video is stored or transmitted.",
+        "NSMicrophoneUsageDescription": "PranaScan uses your microphone to capture a short voice sample for wellness screening. No audio is stored or transmitted."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.pranascan.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "PranaScan uses your camera to measure wellness indicators. No video is stored."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "PranaScan uses your microphone for a 5-second voice wellness check. No audio is stored."
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "http://localhost:8000"
+    }
+  }
+}
