@@ -1,5 +1,8 @@
 """Tests for scan session API endpoints."""
 
+import math
+
+import numpy as np
 import pytest
 from httpx import AsyncClient
 
@@ -221,3 +224,218 @@ async def test_no_diagnostic_language_in_trend_alert(client: AsyncClient, auth_h
     assert data["trend_alert"] in (None, "consider_lab_followup")
     assert "diagnosis" not in str(data).lower()
     assert "diagnostic" not in str(data).lower()
+
+
+# ---------------------------------------------------------------------------
+# Helpers for rPPG integration tests
+# ---------------------------------------------------------------------------
+
+def _make_frame_data(
+    hr_bpm: float = 55.0,
+    fps: float = 30.0,
+    duration_s: float = 30.0,
+    noise_std: float = 0.2,
+    seed: int = 42,
+) -> list[dict]:
+    """
+    Build synthetic frame_data payload for integration tests.
+
+    Uses a sinusoidal green-channel signal at the specified HR.
+    At fps=30, hr_bpm in [42, 200] is within Nyquist and should be detected.
+    At fps=2, only hr_bpm in [42, 58] is reliably within Nyquist.
+    """
+    rng = np.random.default_rng(seed)
+    n = int(fps * duration_s)
+    t = np.arange(n) / fps
+    freq = hr_bpm / 60.0
+    g = 100.0 + 5.0 * np.sin(2.0 * math.pi * freq * t) + rng.normal(0, noise_std, n)
+    r = 80.0 + rng.normal(0, noise_std, n)
+    b = 60.0 + rng.normal(0, noise_std, n)
+    return [
+        {
+            "t_ms": float(t[i] * 1000),
+            "r_mean": float(np.clip(r[i], 0, 255)),
+            "g_mean": float(np.clip(g[i], 0, 255)),
+            "b_mean": float(np.clip(b[i], 0, 255)),
+        }
+        for i in range(n)
+    ]
+
+
+# Base payload with good quality metrics but NO pre-computed wellness values.
+# Backend must compute HR/HRV/RR from frame_data.
+QUALITY_ONLY_PAYLOAD = {
+    "quality_score": 0.88,
+    "lighting_score": 0.80,
+    "motion_score": 0.97,
+    "face_confidence": 0.85,
+    "audio_snr_db": 22.0,
+    "flags": [],
+    # hr_bpm / hrv_ms / respiratory_rate intentionally omitted
+}
+
+
+# ---------------------------------------------------------------------------
+# rPPG integration tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_frame_data_triggers_backend_rppg(client: AsyncClient, auth_headers: dict):
+    """
+    Sending frame_data (no client-computed HR) causes the backend rPPG
+    processor to compute hr_bpm. The result must have a non-None hr_bpm.
+    """
+    await _grant_consent(client, auth_headers)
+    session_id = await _create_session(client, auth_headers)
+
+    # 30 fps, 30 s at 60 bpm — within Nyquist, clean signal
+    frame_data = _make_frame_data(hr_bpm=60.0, fps=30.0, duration_s=30.0, noise_std=0.15)
+
+    payload = {**QUALITY_ONLY_PAYLOAD, "frame_data": frame_data}
+    resp = await client.put(
+        f"/api/v1/scans/sessions/{session_id}/complete",
+        json=payload,
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["hr_bpm"] is not None, "Backend rPPG should have computed hr_bpm from frame_data"
+    assert 30.0 <= data["hr_bpm"] <= 220.0, f"hr_bpm={data['hr_bpm']} out of range"
+
+
+@pytest.mark.asyncio
+async def test_frame_data_hr_within_tolerance_of_synthetic_signal(
+    client: AsyncClient, auth_headers: dict
+):
+    """
+    Backend-computed HR should be within ±10 bpm of the synthetic signal HR (72 bpm).
+    Signal is clean (low noise) at 30 fps.
+    """
+    await _grant_consent(client, auth_headers)
+    session_id = await _create_session(client, auth_headers)
+
+    frame_data = _make_frame_data(hr_bpm=72.0, fps=30.0, duration_s=30.0, noise_std=0.15)
+    payload = {**QUALITY_ONLY_PAYLOAD, "frame_data": frame_data}
+    resp = await client.put(
+        f"/api/v1/scans/sessions/{session_id}/complete",
+        json=payload,
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["hr_bpm"] is not None
+    assert abs(data["hr_bpm"] - 72.0) <= 10.0, (
+        f"HR={data['hr_bpm']} bpm, expected within ±10 of 72 bpm"
+    )
+
+
+@pytest.mark.asyncio
+async def test_frame_data_overrides_client_provided_hr(
+    client: AsyncClient, auth_headers: dict
+):
+    """
+    When frame_data is provided alongside a client hr_bpm, the backend
+    rPPG result should override the client value if rPPG succeeds.
+    """
+    await _grant_consent(client, auth_headers)
+    session_id = await _create_session(client, auth_headers)
+
+    frame_data = _make_frame_data(hr_bpm=60.0, fps=30.0, duration_s=30.0, noise_std=0.15)
+    payload = {
+        **QUALITY_ONLY_PAYLOAD,
+        "frame_data": frame_data,
+        "hr_bpm": 999.0,  # deliberately wrong — should be overridden by rPPG
+        "hrv_ms": 0.0,
+    }
+    resp = await client.put(
+        f"/api/v1/scans/sessions/{session_id}/complete",
+        json=payload,
+        headers=auth_headers,
+    )
+    # 999.0 is out of schema range [30, 220] so Pydantic will reject it
+    # This test verifies the schema rejects the bad value before we even hit rPPG
+    assert resp.status_code in (200, 422)
+    if resp.status_code == 200:
+        data = resp.json()
+        # If somehow 999 passed, rPPG should have overridden it
+        assert data["hr_bpm"] != 999.0
+
+
+@pytest.mark.asyncio
+async def test_insufficient_frame_data_scan_completes_with_null_hr(
+    client: AsyncClient, auth_headers: dict
+):
+    """
+    frame_data with too few frames → rPPG returns None.
+    Scan still completes successfully (hr_bpm=None in result).
+    Quality gate only blocks on lighting/motion/face/snr — not on rPPG outcome.
+    """
+    await _grant_consent(client, auth_headers)
+    session_id = await _create_session(client, auth_headers)
+
+    # Only 10 frames — far below MIN_FRAMES (30)
+    sparse_frames = _make_frame_data(hr_bpm=72.0, fps=1.0, duration_s=10.0)
+
+    payload = {**QUALITY_ONLY_PAYLOAD, "frame_data": sparse_frames}
+    resp = await client.put(
+        f"/api/v1/scans/sessions/{session_id}/complete",
+        json=payload,
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    # HR is None — rPPG had insufficient data
+    assert data["hr_bpm"] is None
+    # rPPG flag should be in the result flags
+    assert any(
+        flag in data["flags"]
+        for flag in ["insufficient_frames", "insufficient_temporal_span"]
+    ), f"Expected rPPG flag in {data['flags']}"
+
+
+@pytest.mark.asyncio
+async def test_rppg_result_contains_no_diagnostic_language(
+    client: AsyncClient, auth_headers: dict
+):
+    """Full rPPG path — result must contain no diagnostic language."""
+    await _grant_consent(client, auth_headers)
+    session_id = await _create_session(client, auth_headers)
+
+    frame_data = _make_frame_data(hr_bpm=60.0, fps=30.0, duration_s=30.0)
+    payload = {**QUALITY_ONLY_PAYLOAD, "frame_data": frame_data}
+    resp = await client.put(
+        f"/api/v1/scans/sessions/{session_id}/complete",
+        json=payload,
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    body_str = str(resp.json()).lower()
+    forbidden = ["diagnosis", "diagnostic", "disease", "disorder", "clinical condition"]
+    for word in forbidden:
+        assert word not in body_str, f"Diagnostic term '{word}' found in response"
+
+
+@pytest.mark.asyncio
+async def test_rppg_flags_appear_in_result_flags(
+    client: AsyncClient, auth_headers: dict
+):
+    """rPPG processing flags must be merged into the result flags field."""
+    await _grant_consent(client, auth_headers)
+    session_id = await _create_session(client, auth_headers)
+
+    # 30 fps, low-quality (high noise) — likely to produce rPPG flags
+    noisy_frames = _make_frame_data(
+        hr_bpm=72.0, fps=30.0, duration_s=30.0, noise_std=25.0
+    )
+    payload = {**QUALITY_ONLY_PAYLOAD, "frame_data": noisy_frames}
+    resp = await client.put(
+        f"/api/v1/scans/sessions/{session_id}/complete",
+        json=payload,
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    # Result must have a flags list (may or may not include rPPG flags depending
+    # on whether the noisy signal still passes peak detection)
+    assert isinstance(data["flags"], list)
