@@ -74,4 +74,4 @@ This assessment is based on the checked-in codebase and compared against the ori
 
 - This assessment is based on the current codebase plus the initial plan from [sprint-plan.md](./sprint-plan.md).
 - The repo contains timeline inconsistencies across documents. For example, [daily-status.md](./daily-status.md) references March 8, 2026 and March 9, 2026, while [sprint-2.1-backlog.md](./sprint-2.1-backlog.md) is dated March 23, 2026 to April 5, 2026. This status ignores those conflicting dates and scores implemented scope only.
-- Local test execution was not re-verified in this workspace on March 9, 2026 because `pytest` and `jest` are not installed here. Existing test files and CI definitions were used as evidence instead.
+- Mobile lint, typecheck, and Jest validation were re-run successfully on March 9, 2026 for the auth item. Backend pytest still could not be collected in this workspace because `pytest_asyncio` is missing from the local Python environment.
