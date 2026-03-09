@@ -68,7 +68,7 @@ export function ScanScreen({ userId, onComplete, onCancel }: ScanScreenProps) {
         hr_bpm: cameraResult.hr_bpm ?? undefined,
         hrv_ms: cameraResult.hrv_ms ?? undefined,
         respiratory_rate: cameraResult.respiratory_rate ?? undefined,
-        // voice metrics are undefined until S2-03 wires real expo-av
+        // voice metrics are computed by the backend from real audio_samples
         voice_jitter_pct: voiceResult.voice_jitter_pct,
         voice_shimmer_pct: voiceResult.voice_shimmer_pct,
         quality_score: cameraResult.quality_score,
@@ -79,7 +79,7 @@ export function ScanScreen({ userId, onComplete, onCancel }: ScanScreenProps) {
         flags: [],
         // frame_data sent to backend for server-side rPPG (raw video stays on device)
         frame_data: cameraResult.frame_data.length > 0 ? cameraResult.frame_data : undefined,
-        // audio_samples sent to backend for server-side voice DSP (S2-03)
+        // audio_samples sent to backend for server-side voice DSP
         audio_samples: voiceResult.audio_samples,
       };
 

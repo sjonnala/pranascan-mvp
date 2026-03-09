@@ -27,15 +27,15 @@ This assessment is based on the checked-in codebase and compared against the ori
 - Mobile API auth is now wired end-to-end for the current app flow: the client requests bearer tokens for the active pseudonymous user and attaches them to protected consent and scan requests.
 - Mobile shell flow exists for consent, camera step, voice step, scan orchestration, and results display.
 - The mobile camera step uses `expo-camera` and forwards sampled `frame_data` for backend processing.
+- The mobile voice step now records real microphone input, derives real `audio_samples`, and submits a real client-side SNR signal for backend voice DSP.
 - First-pass backend processing services exist for rPPG and voice DSP.
 
 ## In Progress / Partial
 
-- Environment checks exist for lighting and motion, but face confidence is still a proxy and real mobile audio SNR capture is not yet wired.
+- Environment checks exist for lighting and motion, but face confidence is still a proxy.
 - rPPG extraction exists for HR, HRV, and respiratory-rate proxy, but it currently runs on the backend from frame summaries instead of on-device as described in the architecture and sprint plan.
-- The voice biomarker path is only partial: backend DSP exists, but the mobile voice step still returns placeholder `undefined` metrics and does not yet provide real `audio_samples`.
 - Trend detection exists, but it is still simplified: only HR is considered and the configured alert threshold is **20%**, not the PRD target of **15%**.
-- End-to-end integration is still partial because auth is now wired, but real voice capture, richer trend parity, and architecture-aligned edge processing are still incomplete.
+- End-to-end integration is still partial because auth and voice capture are now wired, but richer trend parity and architecture-aligned edge processing are still incomplete.
 
 ## Pending Items
 
@@ -67,11 +67,11 @@ This assessment is based on the checked-in codebase and compared against the ori
 
 - Mobile auth is now wired for the current app flow, but token refresh and longer-lived session hardening are still not implemented.
 - The architecture promises edge-first processing, but the implemented signal-processing path is still backend-centric.
-- Voice capture is not yet real on mobile, which leaves a core PRD requirement incomplete.
+- The mobile voice path now depends on `expo-av` sample extraction after recording; if native audio sample callbacks are unavailable, the client falls back to metering-derived samples instead of full PCM.
 - Advanced health features in the PRD are still absent: skin-tone calibration, vascular age, anemia screening, and ABHA sync.
 
 ## Assumptions and Caveats
 
 - This assessment is based on the current codebase plus the initial plan from [sprint-plan.md](./sprint-plan.md).
 - The repo contains timeline inconsistencies across documents. For example, [daily-status.md](./daily-status.md) references March 8, 2026 and March 9, 2026, while [sprint-2.1-backlog.md](./sprint-2.1-backlog.md) is dated March 23, 2026 to April 5, 2026. This status ignores those conflicting dates and scores implemented scope only.
-- Mobile lint, typecheck, and Jest validation were re-run successfully on March 9, 2026 for the auth item. Backend pytest still could not be collected in this workspace because `pytest_asyncio` is missing from the local Python environment.
+- Mobile lint, typecheck, and Jest validation were re-run successfully on March 9, 2026 for the auth and voice integration items. Backend pytest still could not be collected in this workspace because `pytest_asyncio` is missing from the local Python environment.

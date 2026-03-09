@@ -1,39 +1,68 @@
 /**
- * VoiceCapture — 5-second sustained vowel capture.
+ * VoiceCapture — records a real 5-second sustained vowel clip.
  *
- * S2-02: Removed simulateVoiceAnalysis() and all Math.random() calls for
- * business metrics. Voice jitter/shimmer now returns undefined — the backend
- * voice DSP processor (app/services/voice_processor.py) will compute these
- * from audio_samples in S2-03 when real expo-av recording is wired.
- *
- * The waveform visualisation still uses Math.random() for bar heights — this
- * is cosmetic UI animation, not a wellness metric.
- *
- * Raw audio NEVER leaves the device.
- * Non-diagnostic language only — no clinical terminology anywhere.
+ * The mobile client captures real microphone input, derives a live waveform
+ * from metering updates, extracts audio samples from the recorded clip, and
+ * computes a client-side SNR proxy before handing the samples to the backend
+ * voice DSP pipeline.
  */
 
+import { Audio, AVPlaybackStatus } from 'expo-av';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import {
+  AUDIO_SNR_PASS_THRESHOLD_DB,
+  TARGET_AUDIO_SAMPLE_COUNT,
+  buildFallbackAudioSamples,
+  buildWaveformBars,
+  computeSnrDb,
+  meteringDbToAmplitude,
+  resampleAudioSamples,
+} from '../utils/voiceAnalyzer';
+
 const RECORD_DURATION_MS = 5_000;
+const STATUS_UPDATE_INTERVAL_MS = 100;
+const SAMPLE_EXTRACTION_RATE = 16;
+const PROCESSING_TIMEOUT_MS = 2_000;
+
+const RECORDING_OPTIONS: Audio.RecordingOptions = {
+  isMeteringEnabled: true,
+  android: {
+    extension: '.m4a',
+    outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+    audioEncoder: Audio.AndroidAudioEncoder.AAC,
+    sampleRate: 44_100,
+    numberOfChannels: 1,
+    bitRate: 128_000,
+  },
+  ios: {
+    extension: '.m4a',
+    outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+    audioQuality: Audio.IOSAudioQuality.MAX,
+    sampleRate: 44_100,
+    numberOfChannels: 1,
+    bitRate: 128_000,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  web: {
+    mimeType: 'audio/webm',
+    bitsPerSecond: 128_000,
+  },
+};
 
 export interface VoiceResult {
-  /** undefined until S2-03 wires real expo-av recording + backend DSP. */
+  /** Backend computes jitter from audio_samples. */
   voice_jitter_pct: number | undefined;
-  /** undefined until S2-03 wires real expo-av recording + backend DSP. */
+  /** Backend computes shimmer from audio_samples. */
   voice_shimmer_pct: number | undefined;
-  /**
-   * SNR proxy in dB. undefined when no real recording available.
-   * Quality gate uses this to block high-noise environments.
-   */
+  /** Client-side SNR proxy in dB from the real recording. */
   audio_snr_db: number | undefined;
-  /** false when SNR below threshold or no recording available. */
+  /** Whether the captured voice signal passes the SNR quality threshold. */
   passed_snr: boolean;
-  /**
-   * Raw amplitude samples (normalised -1.0–1.0, 4410 Hz).
-   * Populated in S2-03. Sent to backend for server-side DSP.
-   */
+  /** Real audio samples derived from the recorded clip for backend DSP. */
   audio_samples?: number[];
 }
 
@@ -45,64 +74,260 @@ interface VoiceCaptureProps {
 type RecordingState = 'idle' | 'recording' | 'processing' | 'done';
 
 export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
+  const [permission, requestPermission] = Audio.usePermissions();
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [timeRemaining, setTimeRemaining] = useState(RECORD_DURATION_MS / 1000);
-  // Waveform bar heights — cosmetic animation only, not a wellness metric
   const [waveAmplitudes, setWaveAmplitudes] = useState<number[]>(Array(20).fill(0.1));
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const waveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingRef = useRef<Audio.Recording | null>(null);
   const startRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stoppingRef = useRef(false);
+  const meteringSamplesRef = useRef<number[]>([]);
 
-  const stopTimers = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (waveRef.current) clearInterval(waveRef.current);
-    timerRef.current = null;
-    waveRef.current = null;
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
   }, []);
 
-  useEffect(() => () => stopTimers(), [stopTimers]);
-
-  const startRecording = useCallback(() => {
-    setRecordingState('recording');
+  const resetCaptureState = useCallback(() => {
+    meteringSamplesRef.current = [];
+    setWaveAmplitudes(Array(20).fill(0.1));
     setTimeRemaining(RECORD_DURATION_MS / 1000);
-    startRef.current = Date.now();
+    startRef.current = null;
+    stoppingRef.current = false;
+  }, []);
 
-    // Cosmetic waveform animation (Math.random used only for UI bar heights)
-    waveRef.current = setInterval(() => {
-      setWaveAmplitudes(Array.from({ length: 20 }, () => 0.2 + Math.random() * 0.8));
-    }, 100);
+  const cleanupRecording = useCallback(async () => {
+    const activeRecording = recordingRef.current;
+    recordingRef.current = null;
+    if (!activeRecording) {
+      return;
+    }
 
-    // Countdown
-    timerRef.current = setInterval(() => {
-      const elapsed = Date.now() - (startRef.current ?? Date.now());
-      const remaining = Math.max(0, Math.ceil((RECORD_DURATION_MS - elapsed) / 1000));
-      setTimeRemaining(remaining);
+    activeRecording.setOnRecordingStatusUpdate(null);
+    try {
+      await activeRecording.stopAndUnloadAsync();
+    } catch {
+      // Recorder might already be stopped. Safe to ignore here.
+    }
+  }, []);
 
-      if (remaining <= 0) {
-        stopTimers();
-        setRecordingState('processing');
-        setWaveAmplitudes(Array(20).fill(0.1));
+  useEffect(() => {
+    return () => {
+      stopTimer();
+      void cleanupRecording();
+    };
+  }, [cleanupRecording, stopTimer]);
 
-        // S2-02: No simulation. Voice metrics are undefined until S2-03
-        // wires real expo-av recording. Backend will use null values.
-        setTimeout(() => {
-          const result: VoiceResult = {
-            voice_jitter_pct: undefined,
-            voice_shimmer_pct: undefined,
-            audio_snr_db: undefined,
-            passed_snr: true, // assume pass — gate will open; S2-03 computes real SNR
-            audio_samples: undefined,
-          };
-          setRecordingState('done');
-          onComplete(result);
-        }, 400);
+  const extractAudioSamples = useCallback(async (recording: Audio.Recording): Promise<number[]> => {
+    const { sound } = await recording.createNewLoadedSoundAsync({ shouldPlay: false, volume: 0 });
+    const collectedFrames: number[] = [];
+
+    try {
+      sound.setOnAudioSampleReceived((sample) => {
+        const primaryChannel = sample.channels[0];
+        if (primaryChannel?.frames?.length) {
+          collectedFrames.push(...primaryChannel.frames);
+        }
+      });
+
+      try {
+        await sound.setRateAsync(SAMPLE_EXTRACTION_RATE, false);
+      } catch {
+        // Rate adjustment is optional. Continue at normal speed if unavailable.
       }
-    }, 200);
-  }, [onComplete, stopTimers]);
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(resolve, PROCESSING_TIMEOUT_MS);
+
+        sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+          if (!status.isLoaded) {
+            return;
+          }
+
+          if (status.didJustFinish) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+
+        sound.replayAsync({ shouldPlay: true, volume: 0 }).catch((error) => {
+          clearTimeout(timeout);
+          reject(error);
+        });
+      });
+    } finally {
+      sound.setOnAudioSampleReceived(null);
+      sound.setOnPlaybackStatusUpdate(null);
+      await sound.unloadAsync().catch(() => undefined);
+    }
+
+    return collectedFrames;
+  }, []);
+
+  const completeRecording = useCallback(async () => {
+    if (stoppingRef.current) {
+      return;
+    }
+
+    stoppingRef.current = true;
+    stopTimer();
+    setRecordingState('processing');
+
+    const activeRecording = recordingRef.current;
+    if (!activeRecording) {
+      setRecordingState('done');
+      onComplete({
+        voice_jitter_pct: undefined,
+        voice_shimmer_pct: undefined,
+        audio_snr_db: undefined,
+        passed_snr: false,
+        audio_samples: undefined,
+      });
+      return;
+    }
+
+    try {
+      activeRecording.setOnRecordingStatusUpdate(null);
+      await activeRecording.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+
+      const pcmFrames = await extractAudioSamples(activeRecording).catch(() => []);
+      const audioSamples =
+        pcmFrames.length > 0
+          ? resampleAudioSamples(pcmFrames, TARGET_AUDIO_SAMPLE_COUNT)
+          : buildFallbackAudioSamples(
+              meteringSamplesRef.current,
+              TARGET_AUDIO_SAMPLE_COUNT,
+            );
+      const snrDb = computeSnrDb(
+        pcmFrames.length > 0 ? audioSamples : meteringSamplesRef.current,
+      );
+
+      recordingRef.current = null;
+      setRecordingState('done');
+      onComplete({
+        voice_jitter_pct: undefined,
+        voice_shimmer_pct: undefined,
+        audio_snr_db: snrDb,
+        passed_snr: typeof snrDb === 'number' && snrDb > AUDIO_SNR_PASS_THRESHOLD_DB,
+        audio_samples: audioSamples,
+      });
+    } catch {
+      recordingRef.current = null;
+      setRecordingState('done');
+      onComplete({
+        voice_jitter_pct: undefined,
+        voice_shimmer_pct: undefined,
+        audio_snr_db: undefined,
+        passed_snr: false,
+        audio_samples: undefined,
+      });
+    }
+  }, [extractAudioSamples, onComplete, stopTimer]);
+
+  const handleCancel = useCallback(async () => {
+    stopTimer();
+    await cleanupRecording();
+    resetCaptureState();
+    setRecordingState('idle');
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true }).catch(
+      () => undefined,
+    );
+    onCancel();
+  }, [cleanupRecording, onCancel, resetCaptureState, stopTimer]);
+
+  const startRecording = useCallback(async () => {
+    if (!permission?.granted) {
+      await requestPermission();
+      return;
+    }
+
+    try {
+      resetCaptureState();
+      setRecordingState('recording');
+      setWaveAmplitudes(Array(20).fill(0.1));
+      startRef.current = Date.now();
+
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+
+      const recording = new Audio.Recording();
+      recordingRef.current = recording;
+      recording.setProgressUpdateInterval(STATUS_UPDATE_INTERVAL_MS);
+      recording.setOnRecordingStatusUpdate((status) => {
+        if (typeof status.metering !== 'number') {
+          return;
+        }
+
+        const amplitude = meteringDbToAmplitude(status.metering);
+        meteringSamplesRef.current.push(amplitude);
+        setWaveAmplitudes(buildWaveformBars(meteringSamplesRef.current));
+      });
+
+      await recording.prepareToRecordAsync(RECORDING_OPTIONS);
+      await recording.startAsync();
+
+      timerRef.current = setInterval(() => {
+        const elapsed = Date.now() - (startRef.current ?? Date.now());
+        const remaining = Math.max(0, Math.ceil((RECORD_DURATION_MS - elapsed) / 1000));
+        setTimeRemaining(remaining);
+
+        if (remaining <= 0) {
+          void completeRecording();
+        }
+      }, 200);
+    } catch {
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true }).catch(
+        () => undefined,
+      );
+      await cleanupRecording();
+      resetCaptureState();
+      setRecordingState('idle');
+    }
+  }, [
+    cleanupRecording,
+    completeRecording,
+    permission,
+    requestPermission,
+    resetCaptureState,
+  ]);
 
   const progressPct =
     ((RECORD_DURATION_MS / 1000 - timeRemaining) / (RECORD_DURATION_MS / 1000)) * 100;
+
+  if (!permission) {
+    return (
+      <View style={styles.container} testID="voice-capture">
+        <Text style={styles.messageText}>Requesting microphone access...</Text>
+      </View>
+    );
+  }
+
+  if (!permission.granted) {
+    return (
+      <View style={styles.container} testID="voice-capture">
+        <Text style={styles.messageText} testID="mic-permission-message">
+          Microphone access is needed for the voice check.
+        </Text>
+        <Text style={styles.subtitle}>
+          Your recording stays on your device. Only derived wellness signals are shared.
+        </Text>
+        <TouchableOpacity
+          style={styles.recordButton}
+          onPress={requestPermission}
+          testID="allow-mic"
+        >
+          <Text style={styles.recordButtonText}>Allow Microphone</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.cancelButton} onPress={onCancel} testID="cancel-voice">
+          <Text style={styles.cancelButtonText}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container} testID="voice-capture">
@@ -111,11 +336,10 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
         Say &quot;Aaah&quot; in a steady tone for 5 seconds in a quiet space.
       </Text>
 
-      {/* Waveform — cosmetic animation only */}
       <View style={styles.waveContainer} testID="waveform">
-        {waveAmplitudes.map((amp, i) => (
+        {waveAmplitudes.map((amp, index) => (
           <View
-            key={i}
+            key={index}
             style={[
               styles.waveBar,
               {
@@ -140,17 +364,11 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
         {recordingState === 'recording'
           ? `${timeRemaining}s remaining`
           : recordingState === 'processing'
-          ? 'Processing…'
+          ? 'Processing...'
           : recordingState === 'done'
-          ? '✓ Done'
+          ? 'Done'
           : 'Ready'}
       </Text>
-
-      {recordingState === 'idle' && (
-        <Text style={styles.limitationNote} testID="voice-limitation-note">
-          Voice analysis active in a future update.
-        </Text>
-      )}
 
       <View style={styles.buttonRow}>
         {recordingState === 'idle' && (
@@ -159,13 +377,14 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
             onPress={startRecording}
             testID="start-voice"
           >
-            <Text style={styles.recordButtonText}>🎙 Start Voice Check</Text>
+            <Text style={styles.recordButtonText}>Start Voice Check</Text>
           </TouchableOpacity>
         )}
+
         {recordingState === 'recording' && (
           <TouchableOpacity
             style={styles.cancelButton}
-            onPress={onCancel}
+            onPress={() => void handleCancel()}
             testID="cancel-voice"
           >
             <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -232,13 +451,6 @@ const styles = StyleSheet.create({
     color: '#aaaacc',
     marginBottom: 12,
   },
-  limitationNote: {
-    fontSize: 13,
-    color: '#555570',
-    textAlign: 'center',
-    marginBottom: 20,
-    fontStyle: 'italic',
-  },
   buttonRow: {
     width: '100%',
   },
@@ -247,6 +459,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
+    marginBottom: 12,
   },
   recordButtonText: {
     color: '#ffffff',
@@ -260,16 +473,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelButtonText: {
-    color: '#f87171',
-    fontSize: 17,
+    color: '#fca5a5',
+    fontSize: 16,
     fontWeight: '600',
   },
   disclaimer: {
     fontSize: 12,
-    color: '#666688',
+    color: '#555570',
     textAlign: 'center',
-    marginTop: 'auto',
-    paddingBottom: 20,
     lineHeight: 18,
+    marginTop: 20,
+  },
+  messageText: {
+    fontSize: 16,
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 12,
   },
 });
