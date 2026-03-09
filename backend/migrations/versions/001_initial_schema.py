@@ -77,7 +77,9 @@ def upgrade() -> None:
         sa.Column("ip_address", sa.String(64), nullable=True),
         sa.Column("user_agent", sa.String(512), nullable=True),
         sa.Column("detail", sa.Text, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), index=True),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), index=True
+        ),
     )
     op.create_index("ix_audit_logs_user_id", "audit_logs", ["user_id"])
     op.create_index("ix_audit_logs_action", "audit_logs", ["action"])

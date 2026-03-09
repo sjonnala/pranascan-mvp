@@ -20,11 +20,13 @@ from app.schemas.scan import (
     ScanSessionWithResult,
 )
 from app.services import consent_service
+from app.services.delivery_service import deliver_alert
 from app.services.quality_gate import run_quality_gate
 from app.services.rppg_processor import build_frame_samples, process_frames
 from app.services.trend_engine import (
     TrendBaseline,
     baselines_from_row,
+    build_cooldown_check_query,
     build_trend_baseline_query,
     compute_trend_alert,
 )
@@ -173,6 +175,20 @@ async def complete_scan_session(
         threshold_pct=settings.trend_alert_threshold_pct,
         min_baseline_scans=settings.trend_min_baseline_scans,
     )
+
+    # Cooldown check: suppress the alert if one was already delivered within the window
+    if trend_alert is not None:
+        cooldown_cutoff = datetime.now(tz=timezone.utc) - timedelta(
+            hours=settings.trend_cooldown_hours
+        )
+        cooldown_stmt = build_cooldown_check_query(session.user_id, cooldown_cutoff)
+        cooldown_result = await db.execute(cooldown_stmt)
+        if cooldown_result.scalar_one_or_none() is not None:
+            trend_alert = None  # suppress — cooldown active
+
+    # Deliver alert if one fired (after cooldown check)
+    if trend_alert is not None:
+        await deliver_alert(session.user_id, trend_alert)
 
     # Merge quality-gate flags with rPPG processing flags (deduplicated)
     combined_flags = list(dict.fromkeys(gate.flags + rppg_flags))

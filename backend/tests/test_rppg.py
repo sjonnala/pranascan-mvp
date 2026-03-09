@@ -58,8 +58,9 @@ def _make_signal(
     b = 60.0 + rng.normal(0, noise_std, n)
 
     return [
-        FrameSample(t_ms=float(t[i] * 1000), r_mean=float(r[i]),
-                    g_mean=float(g[i]), b_mean=float(b[i]))
+        FrameSample(
+            t_ms=float(t[i] * 1000), r_mean=float(r[i]), g_mean=float(g[i]), b_mean=float(b[i])
+        )
         for i in range(n)
     ]
 
@@ -217,9 +218,12 @@ def test_too_few_frames_returns_insufficient_frames():
 def test_insufficient_temporal_span():
     """30 frames in 2 seconds → below MIN_TEMPORAL_SPAN_S (8s)."""
     frames = [
-        FrameSample(t_ms=float(i * 33), r_mean=80.0,
-                    g_mean=100.0 + 5.0 * math.sin(2 * math.pi * 1.2 * i * 0.033),
-                    b_mean=60.0)
+        FrameSample(
+            t_ms=float(i * 33),
+            r_mean=80.0,
+            g_mean=100.0 + 5.0 * math.sin(2 * math.pi * 1.2 * i * 0.033),
+            b_mean=60.0,
+        )
         for i in range(30)
     ]
     result = process_frames(frames)
@@ -230,8 +234,7 @@ def test_insufficient_temporal_span():
 def test_flat_signal_returns_flag():
     """Constant green channel → flat_signal flag, no HR."""
     frames = [
-        FrameSample(t_ms=float(i * 33), r_mean=80.0, g_mean=100.0, b_mean=60.0)
-        for i in range(300)
+        FrameSample(t_ms=float(i * 33), r_mean=80.0, g_mean=100.0, b_mean=60.0) for i in range(300)
     ]
     result = process_frames(frames)
     assert result.hr_bpm is None
@@ -277,8 +280,7 @@ def test_build_frame_samples_converts_dicts():
 
 def test_build_frame_samples_handles_multiple():
     raw = [
-        {"t_ms": float(i * 33), "r_mean": 80.0, "g_mean": 100.0, "b_mean": 60.0}
-        for i in range(100)
+        {"t_ms": float(i * 33), "r_mean": 80.0, "g_mean": 100.0, "b_mean": 60.0} for i in range(100)
     ]
     frames = build_frame_samples(raw)
     assert len(frames) == 100
@@ -303,8 +305,7 @@ def test_no_diagnostic_language_in_flags():
         result = process_frames(sig)
         for flag in result.flags:
             for word in forbidden:
-                assert word not in flag.lower(), \
-                    f"Diagnostic term '{word}' found in flag '{flag}'"
+                assert word not in flag.lower(), f"Diagnostic term '{word}' found in flag '{flag}'"
 
 
 def test_no_diagnostic_language_in_field_names():

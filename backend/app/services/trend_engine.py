@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 
 from app.models.scan import ScanResult
 
@@ -78,6 +78,23 @@ def compute_metric_deviation_pct(
 
     deviation = abs((current_value - baseline.average) / baseline.average) * 100
     return round(deviation, 2)
+
+
+def build_cooldown_check_query(user_id: str, cutoff: datetime) -> Select:
+    """
+    Return a SELECT that checks whether any trend alert was fired for this user
+    since `cutoff`. Returns the most recent trend_alert value (or None).
+    """
+    return (
+        select(ScanResult.trend_alert)
+        .where(
+            ScanResult.user_id == user_id,
+            ScanResult.created_at >= cutoff,
+            ScanResult.trend_alert.isnot(None),
+        )
+        .order_by(ScanResult.created_at.desc())
+        .limit(1)
+    )
 
 
 def compute_trend_alert(

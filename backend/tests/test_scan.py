@@ -1,11 +1,13 @@
 """Tests for scan session API endpoints."""
 
 import math
+from unittest.mock import AsyncMock, patch
 
 import numpy as np
 import pytest
 from httpx import AsyncClient
 
+from app.config import settings
 from tests.conftest import TEST_USER_ID
 
 GOOD_RESULT = {
@@ -356,6 +358,7 @@ async def test_trend_alert_uses_15pct_threshold_and_non_hr_metrics(
 # Helpers for rPPG integration tests
 # ---------------------------------------------------------------------------
 
+
 def _make_frame_data(
     hr_bpm: float = 55.0,
     fps: float = 30.0,
@@ -451,15 +454,13 @@ async def test_frame_data_hr_within_tolerance_of_synthetic_signal(
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["hr_bpm"] is not None
-    assert abs(data["hr_bpm"] - 72.0) <= 10.0, (
-        f"HR={data['hr_bpm']} bpm, expected within ±10 of 72 bpm"
-    )
+    assert (
+        abs(data["hr_bpm"] - 72.0) <= 10.0
+    ), f"HR={data['hr_bpm']} bpm, expected within ±10 of 72 bpm"
 
 
 @pytest.mark.asyncio
-async def test_frame_data_overrides_client_provided_hr(
-    client: AsyncClient, auth_headers: dict
-):
+async def test_frame_data_overrides_client_provided_hr(client: AsyncClient, auth_headers: dict):
     """
     When frame_data is provided alongside a client hr_bpm, the backend
     rPPG result should override the client value if rPPG succeeds.
@@ -515,15 +516,12 @@ async def test_insufficient_frame_data_scan_completes_with_null_hr(
     assert data["hr_bpm"] is None
     # rPPG flag should be in the result flags
     assert any(
-        flag in data["flags"]
-        for flag in ["insufficient_frames", "insufficient_temporal_span"]
+        flag in data["flags"] for flag in ["insufficient_frames", "insufficient_temporal_span"]
     ), f"Expected rPPG flag in {data['flags']}"
 
 
 @pytest.mark.asyncio
-async def test_rppg_result_contains_no_diagnostic_language(
-    client: AsyncClient, auth_headers: dict
-):
+async def test_rppg_result_contains_no_diagnostic_language(client: AsyncClient, auth_headers: dict):
     """Full rPPG path — result must contain no diagnostic language."""
     await _grant_consent(client, auth_headers)
     session_id = await _create_session(client, auth_headers)
@@ -543,17 +541,13 @@ async def test_rppg_result_contains_no_diagnostic_language(
 
 
 @pytest.mark.asyncio
-async def test_rppg_flags_appear_in_result_flags(
-    client: AsyncClient, auth_headers: dict
-):
+async def test_rppg_flags_appear_in_result_flags(client: AsyncClient, auth_headers: dict):
     """rPPG processing flags must be merged into the result flags field."""
     await _grant_consent(client, auth_headers)
     session_id = await _create_session(client, auth_headers)
 
     # 30 fps, low-quality (high noise) — likely to produce rPPG flags
-    noisy_frames = _make_frame_data(
-        hr_bpm=72.0, fps=30.0, duration_s=30.0, noise_std=25.0
-    )
+    noisy_frames = _make_frame_data(hr_bpm=72.0, fps=30.0, duration_s=30.0, noise_std=25.0)
     payload = {**QUALITY_ONLY_PAYLOAD, "frame_data": noisy_frames}
     resp = await client.put(
         f"/api/v1/scans/sessions/{session_id}/complete",
@@ -565,3 +559,87 @@ async def test_rppg_flags_appear_in_result_flags(
     # Result must have a flags list (may or may not include rPPG flags depending
     # on whether the noisy signal still passes peak detection)
     assert isinstance(data["flags"], list)
+
+
+# ---------------------------------------------------------------------------
+# Cooldown + delivery tests
+# ---------------------------------------------------------------------------
+
+# Metric values that produce a mature baseline then a >15% deviation on hr_bpm
+BASELINE_RESULT = {**GOOD_RESULT}  # hr_bpm=72.0 — used for baseline scans
+ALERT_RESULT = {**GOOD_RESULT, "hrv_ms": 38.0}  # hrv_ms deviates >15% from 45.0
+
+
+@pytest.mark.asyncio
+async def test_cooldown_suppresses_repeated_alert(
+    client: AsyncClient, auth_headers: dict, monkeypatch
+):
+    """
+    After an alert fires on scan 4, the 5th scan with the same deviation
+    should be suppressed due to the active cooldown window.
+    """
+    await _grant_consent(client, auth_headers)
+
+    # Scans 1–3: establish mature baseline (hr_bpm=72, hrv_ms=45)
+    for _ in range(3):
+        session_id = await _create_session(client, auth_headers)
+        resp = await client.put(
+            f"/api/v1/scans/sessions/{session_id}/complete",
+            json=BASELINE_RESULT,
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+
+    # Scan 4: should fire trend alert (hrv_ms=38.0 is >15% below baseline 45.0)
+    session_id = await _create_session(client, auth_headers)
+    resp = await client.put(
+        f"/api/v1/scans/sessions/{session_id}/complete",
+        json=ALERT_RESULT,
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert (
+        resp.json()["trend_alert"] == "consider_lab_followup"
+    ), "Scan 4 should have fired the alert"
+
+    # Set a very large cooldown so the alert from scan 4 is still within the window
+    monkeypatch.setattr(settings, "trend_cooldown_hours", 999)
+
+    # Scan 5: same deviation — should be suppressed by cooldown
+    session_id = await _create_session(client, auth_headers)
+    resp = await client.put(
+        f"/api/v1/scans/sessions/{session_id}/complete",
+        json=ALERT_RESULT,
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["trend_alert"] is None, "Scan 5 alert should be suppressed by cooldown"
+
+
+@pytest.mark.asyncio
+async def test_delivery_stub_called_on_alert(client: AsyncClient, auth_headers: dict):
+    """deliver_alert is called with the correct user_id and alert_type when an alert fires."""
+    await _grant_consent(client, auth_headers)
+
+    # Establish 3-scan baseline
+    for _ in range(3):
+        session_id = await _create_session(client, auth_headers)
+        resp = await client.put(
+            f"/api/v1/scans/sessions/{session_id}/complete",
+            json=BASELINE_RESULT,
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+
+    mock_deliver = AsyncMock()
+    with patch("app.routers.scan.deliver_alert", mock_deliver):
+        session_id = await _create_session(client, auth_headers)
+        resp = await client.put(
+            f"/api/v1/scans/sessions/{session_id}/complete",
+            json=ALERT_RESULT,
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["trend_alert"] == "consider_lab_followup"
+
+    mock_deliver.assert_called_once_with(TEST_USER_ID, "consider_lab_followup")

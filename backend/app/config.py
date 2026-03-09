@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     trend_lookback_days: int = 7
     trend_alert_threshold_pct: float = 15.0  # % deviation from baseline
     trend_min_baseline_scans: int = 3
+    trend_cooldown_hours: int = 48  # suppress re-alerts within this window
+    alert_webhook_url: str | None = None  # if set, POST alert payloads here
 
 
 settings = Settings()

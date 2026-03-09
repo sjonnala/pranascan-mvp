@@ -1,6 +1,5 @@
 """Tests for JWT auth endpoints and enforcement."""
 
-
 import pytest
 from httpx import AsyncClient
 from jose import jwt

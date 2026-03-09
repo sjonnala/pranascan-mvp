@@ -12,7 +12,9 @@ from app.services.voice_processor import (
 )
 
 
-def _pure_sine(freq_hz: float = 220.0, duration_s: float = 5.0, amplitude: float = 0.8) -> list[float]:
+def _pure_sine(
+    freq_hz: float = 220.0, duration_s: float = 5.0, amplitude: float = 0.8
+) -> list[float]:
     """Generate a pure sine wave at given frequency."""
     t = np.arange(int(SAMPLE_RATE * duration_s)) / float(SAMPLE_RATE)
     return list(amplitude * np.sin(2.0 * math.pi * freq_hz * t))

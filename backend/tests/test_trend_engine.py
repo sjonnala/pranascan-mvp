@@ -1,8 +1,13 @@
 """Unit tests for the backend multi-metric trend engine."""
 
+from datetime import datetime, timezone
+
+from sqlalchemy import Select
+
 from app.services.trend_engine import (
     TrendBaseline,
     baselines_from_row,
+    build_cooldown_check_query,
     compute_metric_deviation_pct,
     compute_trend_alert,
 )
@@ -57,3 +62,11 @@ def test_compute_trend_alert_fires_for_non_hr_metric():
     )
 
     assert trend_alert == "consider_lab_followup"
+
+
+def test_build_cooldown_check_query_returns_selectable():
+    """build_cooldown_check_query returns a SQLAlchemy Select object."""
+    cutoff = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    result = build_cooldown_check_query("user1", cutoff)
+    assert result is not None
+    assert isinstance(result, Select)

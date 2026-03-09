@@ -26,7 +26,9 @@ async def test_audit_log_list_empty(client: AsyncClient, auth_headers: dict):
 
 
 @pytest.mark.asyncio
-async def test_audit_log_created_via_service(client: AsyncClient, db_session: AsyncSession, auth_headers: dict):
+async def test_audit_log_created_via_service(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
     """log_event service creates an immutable audit record."""
     entry = await log_event(
         db_session,
@@ -46,7 +48,9 @@ async def test_audit_log_created_via_service(client: AsyncClient, db_session: As
 
 
 @pytest.mark.asyncio
-async def test_audit_log_filter_by_user(client: AsyncClient, db_session: AsyncSession, auth_headers: dict):
+async def test_audit_log_filter_by_user(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
     """Audit logs can be filtered by user_id."""
     await log_event(
         db_session,
@@ -85,7 +89,9 @@ async def test_audit_logs_immutable_no_delete_endpoint(client: AsyncClient, auth
 
 
 @pytest.mark.asyncio
-async def test_audit_log_pagination(client: AsyncClient, db_session: AsyncSession, auth_headers: dict):
+async def test_audit_log_pagination(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
     """Audit logs support pagination."""
     for i in range(5):
         await log_event(
