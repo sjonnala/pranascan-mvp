@@ -55,7 +55,7 @@ from scipy import signal
 class FrameSample:
     """Single video frame colour channel means."""
 
-    t_ms: float   # timestamp in milliseconds from scan start
+    t_ms: float  # timestamp in milliseconds from scan start
     r_mean: float  # 0.0–255.0 mean red channel
     g_mean: float  # 0.0–255.0 mean green channel
     b_mean: float  # 0.0–255.0 mean blue channel
@@ -65,11 +65,11 @@ class FrameSample:
 class RppgResult:
     """rPPG-derived wellness indicator values. Not diagnostic values."""
 
-    hr_bpm: float | None          # heart rate — wellness indicator only
-    hrv_ms: float | None          # RMSSD HRV in ms — wellness indicator only
+    hr_bpm: float | None  # heart rate — wellness indicator only
+    hrv_ms: float | None  # RMSSD HRV in ms — wellness indicator only
     respiratory_rate: float | None  # breaths/min proxy — wellness indicator only
-    quality_score: float          # 0.0–1.0 signal quality
-    flags: list[str]              # processing flags, never diagnostic language
+    quality_score: float  # 0.0–1.0 signal quality
+    flags: list[str]  # processing flags, never diagnostic language
 
 
 # ---------------------------------------------------------------------------
@@ -125,8 +125,9 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
     # -----------------------------------------------------------------------
     if len(frames) < MIN_FRAMES:
         flags.append("insufficient_frames")
-        return RppgResult(hr_bpm=None, hrv_ms=None, respiratory_rate=None,
-                          quality_score=0.0, flags=flags)
+        return RppgResult(
+            hr_bpm=None, hrv_ms=None, respiratory_rate=None, quality_score=0.0, flags=flags
+        )
 
     # -----------------------------------------------------------------------
     # 2. Build time axis; check monotonicity and temporal span
@@ -139,21 +140,24 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
     n_negative = int(np.sum(diffs <= 0))
     if n_negative > 1:
         flags.append("irregular_timestamps")
-        return RppgResult(hr_bpm=None, hrv_ms=None, respiratory_rate=None,
-                          quality_score=0.0, flags=flags)
+        return RppgResult(
+            hr_bpm=None, hrv_ms=None, respiratory_rate=None, quality_score=0.0, flags=flags
+        )
 
     temporal_span = float(t_s[-1] - t_s[0])
     if temporal_span < MIN_TEMPORAL_SPAN_S:
         flags.append("insufficient_temporal_span")
-        return RppgResult(hr_bpm=None, hrv_ms=None, respiratory_rate=None,
-                          quality_score=0.0, flags=flags)
+        return RppgResult(
+            hr_bpm=None, hrv_ms=None, respiratory_rate=None, quality_score=0.0, flags=flags
+        )
 
     # Estimated sample rate from median frame interval
     median_dt = float(np.median(diffs[diffs > 0]))
     if median_dt <= 0:
         flags.append("irregular_timestamps")
-        return RppgResult(hr_bpm=None, hrv_ms=None, respiratory_rate=None,
-                          quality_score=0.0, flags=flags)
+        return RppgResult(
+            hr_bpm=None, hrv_ms=None, respiratory_rate=None, quality_score=0.0, flags=flags
+        )
 
     fs = 1.0 / median_dt
 
@@ -175,8 +179,9 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
     std = float(np.std(green_detrended))
     if std < 1e-6:
         flags.append("flat_signal")
-        return RppgResult(hr_bpm=None, hrv_ms=None, respiratory_rate=None,
-                          quality_score=0.0, flags=flags)
+        return RppgResult(
+            hr_bpm=None, hrv_ms=None, respiratory_rate=None, quality_score=0.0, flags=flags
+        )
 
     green_norm = green_detrended / std
 
@@ -192,15 +197,16 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
         filtered = signal.filtfilt(b, a, green_norm)
     except Exception:  # noqa: BLE001
         flags.append("filter_error")
-        return RppgResult(hr_bpm=None, hrv_ms=None, respiratory_rate=None,
-                          quality_score=0.0, flags=flags)
+        return RppgResult(
+            hr_bpm=None, hrv_ms=None, respiratory_rate=None, quality_score=0.0, flags=flags
+        )
 
     # -----------------------------------------------------------------------
     # 6. Spectral quality score
     #    Ratio of cardiac-band power to total normalised signal power.
     # -----------------------------------------------------------------------
-    total_power = float(np.mean(green_norm ** 2))
-    cardiac_power = float(np.mean(filtered ** 2))
+    total_power = float(np.mean(green_norm**2))
+    cardiac_power = float(np.mean(filtered**2))
     quality_score = min(cardiac_power / total_power, 1.0) if total_power > 1e-9 else 0.0
 
     if quality_score < MIN_SPECTRAL_QUALITY:
@@ -214,8 +220,13 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
 
     if len(peaks) < 3:
         flags.append("insufficient_peaks")
-        return RppgResult(hr_bpm=None, hrv_ms=None, respiratory_rate=None,
-                          quality_score=round(quality_score, 3), flags=flags)
+        return RppgResult(
+            hr_bpm=None,
+            hrv_ms=None,
+            respiratory_rate=None,
+            quality_score=round(quality_score, 3),
+            flags=flags,
+        )
 
     peak_times = t_s[peaks]
     ibi_s = np.diff(peak_times)
@@ -236,7 +247,7 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
     hrv_ms: float | None = None
     if len(ibi_s) >= 3:
         successive_diffs_ms = np.diff(ibi_s * 1000.0)
-        hrv_ms = round(float(np.sqrt(np.mean(successive_diffs_ms ** 2))), 2)
+        hrv_ms = round(float(np.sqrt(np.mean(successive_diffs_ms**2))), 2)
 
     # -----------------------------------------------------------------------
     # 10. Respiratory rate via low-frequency envelope
