@@ -111,6 +111,51 @@ async def test_complete_session_good_quality(client: AsyncClient, auth_headers: 
 
 
 @pytest.mark.asyncio
+async def test_complete_session_edge_processed_vitals(client: AsyncClient, auth_headers: dict):
+    """
+    Edge-processing path: client submits pre-computed vitals WITHOUT frame_data.
+
+    This is the production path after the on-device rPPG processor runs.
+    The backend must accept pre-computed hr_bpm/hrv_ms/respiratory_rate and
+    return them unchanged — no server-side rPPG should run or overwrite them.
+    """
+    await _grant_consent(client, auth_headers)
+    session_id = await _create_session(client, auth_headers)
+
+    # Edge-processed payload: vitals from on-device rPPG, no frame_data field.
+    edge_payload = {
+        "hr_bpm": 68.5,
+        "hrv_ms": 38.2,
+        "respiratory_rate": 15.0,
+        "voice_jitter_pct": 0.4,
+        "voice_shimmer_pct": 1.8,
+        "quality_score": 0.88,
+        "lighting_score": 0.75,
+        "motion_score": 0.97,
+        "face_confidence": 0.91,
+        "audio_snr_db": 22.0,
+        "flags": [],
+        # frame_data intentionally absent — edge-processing path
+    }
+
+    resp = await client.put(
+        f"/api/v1/scans/sessions/{session_id}/complete",
+        json=edge_payload,
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+
+    # Vitals returned as submitted (no server-side override when frame_data absent)
+    assert data["hr_bpm"] == 68.5
+    assert data["hrv_ms"] == 38.2
+    assert data["respiratory_rate"] == 15.0
+    assert data["quality_score"] == 0.88
+    assert data["trend_alert"] is None
+    assert "diagnosis" not in str(data).lower()
+
+
+@pytest.mark.asyncio
 async def test_complete_session_bad_lighting_rejected(client: AsyncClient, auth_headers: dict):
     """Session with poor lighting is rejected by quality gate."""
     await _grant_consent(client, auth_headers)

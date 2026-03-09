@@ -61,10 +61,11 @@ export function ScanScreen({ userId, onComplete, onCancel }: ScanScreenProps) {
       if (!cameraResult || !sessionId) return;
       setStep('submitting');
 
-      // Convert null → undefined for optional numeric fields (null = not yet computed;
-      // undefined = not submitted; both mean backend should use frame_data instead)
+      // Edge-processing path: on-device rPPG has already run in CameraCapture.
+      // We submit the derived wellness indicator values directly — frame_data
+      // is NOT sent to the backend (privacy-aligned edge-first architecture).
+      // null from on-device → undefined so the backend omits those fields.
       const payload: ScanResultPayload = {
-        // hr_bpm/hrv_ms/respiratory_rate are null from camera (computed by backend rPPG)
         hr_bpm: cameraResult.hr_bpm ?? undefined,
         hrv_ms: cameraResult.hrv_ms ?? undefined,
         respiratory_rate: cameraResult.respiratory_rate ?? undefined,
@@ -77,9 +78,9 @@ export function ScanScreen({ userId, onComplete, onCancel }: ScanScreenProps) {
         face_confidence: cameraResult.quality.face_confidence,
         audio_snr_db: voiceResult.audio_snr_db,
         flags: [],
-        // frame_data sent to backend for server-side rPPG (raw video stays on device)
-        frame_data: cameraResult.frame_data.length > 0 ? cameraResult.frame_data : undefined,
-        // audio_samples sent to backend for server-side voice DSP
+        // frame_data intentionally omitted: on-device rPPG has already run.
+        // Raw frame bytes stay on device — they are not sent to the backend.
+        // audio_samples sent to backend for server-side voice DSP (no on-device DSP yet)
         audio_samples: voiceResult.audio_samples,
       };
 

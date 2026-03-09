@@ -26,6 +26,7 @@ import {
   computeMotionScore,
   computeOverallQualityScore,
 } from '../utils/frameAnalyzer';
+import { processFrames } from '../utils/rppgProcessor';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -42,16 +43,22 @@ const AUDIO_SNR_DEFAULT = 20.0;
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CameraResult {
-  /** null until backend rPPG processes frame_data (S2-02). */
+  /** On-device rPPG estimate. Null if signal quality was insufficient. */
   hr_bpm: number | null;
-  /** null until backend rPPG processes frame_data (S2-02). */
+  /** On-device HRV (RMSSD ms). Null if < 4 peaks were detected. */
   hrv_ms: number | null;
-  /** null until backend rPPG processes frame_data (S2-02). */
+  /** On-device respiratory rate proxy. Null if proxy failed. */
   respiratory_rate: number | null;
   quality: QualityMetrics;
   quality_score: number;
-  /** Per-frame RGB means sent to backend for server-side rPPG. */
+  /**
+   * Per-frame RGB means retained for potential fallback / Sprint 3 debug.
+   * NOT sent to the backend in the current edge-processing path.
+   * Raw video never leaves the device.
+   */
   frame_data: FrameSample[];
+  /** rPPG signal quality score from on-device processing (0–1). */
+  rppg_quality: number;
 }
 
 interface CameraCaptureProps {
@@ -124,6 +131,11 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
     const motion = lastMotionRef.current;
     const faceConf = lastFaceConfidenceRef.current;
 
+    // ── On-device rPPG processing ────────────────────────────────────────
+    // Runs synchronously on the collected frame_data.  No frame bytes leave
+    // the device — only the derived hr_bpm/hrv_ms/respiratory_rate are sent.
+    const rppgResult = processFrames(frames);
+
     const finalQuality: QualityMetrics = {
       lighting_score: lighting,
       motion_score: motion,
@@ -132,9 +144,9 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
     };
 
     onComplete({
-      hr_bpm: null,           // computed by backend rPPG (S2-02)
-      hrv_ms: null,
-      respiratory_rate: null,
+      hr_bpm: rppgResult.hr_bpm,
+      hrv_ms: rppgResult.hrv_ms,
+      respiratory_rate: rppgResult.respiratory_rate,
       quality: finalQuality,
       quality_score: computeOverallQualityScore(
         lighting,
@@ -142,7 +154,8 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
         faceConf,
         AUDIO_SNR_DEFAULT,
       ),
-      frame_data: frames,
+      frame_data: frames,     // retained on device, not submitted to backend
+      rppg_quality: rppgResult.quality_score,
     });
   }, [stopTimers, onComplete]);
 
