@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     min_face_confidence: float = 0.8
     min_audio_snr_db: float = 15.0
 
+    # Latency
+    latency_target_ms: int = 15_000  # target: <15s end-to-end scan processing
+
     # Trend
     trend_lookback_days: int = 7
     trend_alert_threshold_pct: float = 15.0  # % deviation from baseline
