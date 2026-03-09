@@ -1,10 +1,16 @@
 /**
- * VoiceCapture component — 5-second sustained vowel capture.
+ * VoiceCapture — 5-second sustained vowel capture.
  *
- * Sprint 1: Simulated voice analysis for MVP scaffolding.
- * Sprint 2: Replace simulateVoiceAnalysis() with real jitter/shimmer algorithm.
+ * S2-02: Removed simulateVoiceAnalysis() and all Math.random() calls for
+ * business metrics. Voice jitter/shimmer now returns undefined — the backend
+ * voice DSP processor (app/services/voice_processor.py) will compute these
+ * from audio_samples in S2-03 when real expo-av recording is wired.
+ *
+ * The waveform visualisation still uses Math.random() for bar heights — this
+ * is cosmetic UI animation, not a wellness metric.
  *
  * Raw audio NEVER leaves the device.
+ * Non-diagnostic language only — no clinical terminology anywhere.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -13,10 +19,22 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 const RECORD_DURATION_MS = 5_000;
 
 export interface VoiceResult {
-  voice_jitter_pct: number;
-  voice_shimmer_pct: number;
-  audio_snr_db: number;
+  /** undefined until S2-03 wires real expo-av recording + backend DSP. */
+  voice_jitter_pct: number | undefined;
+  /** undefined until S2-03 wires real expo-av recording + backend DSP. */
+  voice_shimmer_pct: number | undefined;
+  /**
+   * SNR proxy in dB. undefined when no real recording available.
+   * Quality gate uses this to block high-noise environments.
+   */
+  audio_snr_db: number | undefined;
+  /** false when SNR below threshold or no recording available. */
   passed_snr: boolean;
+  /**
+   * Raw amplitude samples (normalised -1.0–1.0, 4410 Hz).
+   * Populated in S2-03. Sent to backend for server-side DSP.
+   */
+  audio_samples?: number[];
 }
 
 interface VoiceCaptureProps {
@@ -24,27 +42,14 @@ interface VoiceCaptureProps {
   onCancel: () => void;
 }
 
-/**
- * Simulates voice analysis for Sprint 1.
- * Returns plausible jitter/shimmer values.
- * Replace with real audio processing in Sprint 2.
- */
-function simulateVoiceAnalysis(): VoiceResult {
-  const audio_snr_db = 18 + Math.random() * 15; // 18–33 dB
-  return {
-    voice_jitter_pct: 0.1 + Math.random() * 0.8, // 0.1–0.9%
-    voice_shimmer_pct: 0.5 + Math.random() * 3.0, // 0.5–3.5%
-    audio_snr_db,
-    passed_snr: audio_snr_db > 15.0,
-  };
-}
-
-type RecordingState = 'idle' | 'countdown' | 'recording' | 'processing' | 'done';
+type RecordingState = 'idle' | 'recording' | 'processing' | 'done';
 
 export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [timeRemaining, setTimeRemaining] = useState(RECORD_DURATION_MS / 1000);
+  // Waveform bar heights — cosmetic animation only, not a wellness metric
   const [waveAmplitudes, setWaveAmplitudes] = useState<number[]>(Array(20).fill(0.1));
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const waveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number | null>(null);
@@ -52,6 +57,8 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
   const stopTimers = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (waveRef.current) clearInterval(waveRef.current);
+    timerRef.current = null;
+    waveRef.current = null;
   }, []);
 
   useEffect(() => () => stopTimers(), [stopTimers]);
@@ -61,7 +68,7 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
     setTimeRemaining(RECORD_DURATION_MS / 1000);
     startRef.current = Date.now();
 
-    // Animate waveform
+    // Cosmetic waveform animation (Math.random used only for UI bar heights)
     waveRef.current = setInterval(() => {
       setWaveAmplitudes(Array.from({ length: 20 }, () => 0.2 + Math.random() * 0.8));
     }, 100);
@@ -77,17 +84,25 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
         setRecordingState('processing');
         setWaveAmplitudes(Array(20).fill(0.1));
 
-        // Simulate processing delay
+        // S2-02: No simulation. Voice metrics are undefined until S2-03
+        // wires real expo-av recording. Backend will use null values.
         setTimeout(() => {
-          const voiceResult = simulateVoiceAnalysis();
+          const result: VoiceResult = {
+            voice_jitter_pct: undefined,
+            voice_shimmer_pct: undefined,
+            audio_snr_db: undefined,
+            passed_snr: true, // assume pass — gate will open; S2-03 computes real SNR
+            audio_samples: undefined,
+          };
           setRecordingState('done');
-          onComplete(voiceResult);
-        }, 800);
+          onComplete(result);
+        }, 400);
       }
     }, 200);
   }, [onComplete, stopTimers]);
 
-  const progressPct = ((RECORD_DURATION_MS / 1000 - timeRemaining) / (RECORD_DURATION_MS / 1000)) * 100;
+  const progressPct =
+    ((RECORD_DURATION_MS / 1000 - timeRemaining) / (RECORD_DURATION_MS / 1000)) * 100;
 
   return (
     <View style={styles.container} testID="voice-capture">
@@ -96,7 +111,7 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
         Say &quot;Aaah&quot; in a steady tone for 5 seconds in a quiet space.
       </Text>
 
-      {/* Waveform visualisation */}
+      {/* Waveform — cosmetic animation only */}
       <View style={styles.waveContainer} testID="waveform">
         {waveAmplitudes.map((amp, i) => (
           <View
@@ -113,14 +128,10 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
         ))}
       </View>
 
-      {/* Progress */}
       {(recordingState === 'recording' || recordingState === 'processing') && (
         <View style={styles.progressBar}>
           <View
-            style={[
-              styles.progressFill,
-              { width: `${progressPct}%` as `${number}%` },
-            ]}
+            style={[styles.progressFill, { width: `${progressPct}%` as `${number}%` }]}
           />
         </View>
       )}
@@ -129,20 +140,34 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
         {recordingState === 'recording'
           ? `${timeRemaining}s remaining`
           : recordingState === 'processing'
-          ? 'Analysing…'
+          ? 'Processing…'
           : recordingState === 'done'
           ? '✓ Done'
           : 'Ready'}
       </Text>
 
+      {recordingState === 'idle' && (
+        <Text style={styles.limitationNote} testID="voice-limitation-note">
+          Voice analysis active in a future update.
+        </Text>
+      )}
+
       <View style={styles.buttonRow}>
         {recordingState === 'idle' && (
-          <TouchableOpacity style={styles.recordButton} onPress={startRecording} testID="start-voice">
+          <TouchableOpacity
+            style={styles.recordButton}
+            onPress={startRecording}
+            testID="start-voice"
+          >
             <Text style={styles.recordButtonText}>🎙 Start Voice Check</Text>
           </TouchableOpacity>
         )}
         {recordingState === 'recording' && (
-          <TouchableOpacity style={styles.cancelButton} onPress={onCancel} testID="cancel-voice">
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={onCancel}
+            testID="cancel-voice"
+          >
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
         )}
@@ -205,7 +230,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#aaaacc',
-    marginBottom: 32,
+    marginBottom: 12,
+  },
+  limitationNote: {
+    fontSize: 13,
+    color: '#555570',
+    textAlign: 'center',
+    marginBottom: 20,
+    fontStyle: 'italic',
   },
   buttonRow: {
     width: '100%',

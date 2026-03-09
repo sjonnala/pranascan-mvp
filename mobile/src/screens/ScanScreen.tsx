@@ -64,9 +64,11 @@ export function ScanScreen({ userId, onComplete, onCancel }: ScanScreenProps) {
       // Convert null → undefined for optional numeric fields (null = not yet computed;
       // undefined = not submitted; both mean backend should use frame_data instead)
       const payload: ScanResultPayload = {
+        // hr_bpm/hrv_ms/respiratory_rate are null from camera (computed by backend rPPG)
         hr_bpm: cameraResult.hr_bpm ?? undefined,
         hrv_ms: cameraResult.hrv_ms ?? undefined,
         respiratory_rate: cameraResult.respiratory_rate ?? undefined,
+        // voice metrics are undefined until S2-03 wires real expo-av
         voice_jitter_pct: voiceResult.voice_jitter_pct,
         voice_shimmer_pct: voiceResult.voice_shimmer_pct,
         quality_score: cameraResult.quality_score,
@@ -75,7 +77,10 @@ export function ScanScreen({ userId, onComplete, onCancel }: ScanScreenProps) {
         face_confidence: cameraResult.quality.face_confidence,
         audio_snr_db: voiceResult.audio_snr_db,
         flags: [],
+        // frame_data sent to backend for server-side rPPG (raw video stays on device)
         frame_data: cameraResult.frame_data.length > 0 ? cameraResult.frame_data : undefined,
+        // audio_samples sent to backend for server-side voice DSP (S2-03)
+        audio_samples: voiceResult.audio_samples,
       };
 
       try {
