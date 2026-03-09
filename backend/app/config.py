@@ -33,7 +33,8 @@ class Settings(BaseSettings):
 
     # Trend
     trend_lookback_days: int = 7
-    trend_alert_threshold_pct: float = 20.0  # % deviation from baseline
+    trend_alert_threshold_pct: float = 15.0  # % deviation from baseline
+    trend_min_baseline_scans: int = 3
 
 
 settings = Settings()

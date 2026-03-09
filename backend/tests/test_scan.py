@@ -226,6 +226,58 @@ async def test_no_diagnostic_language_in_trend_alert(client: AsyncClient, auth_h
     assert "diagnostic" not in str(data).lower()
 
 
+@pytest.mark.asyncio
+async def test_trend_alert_requires_three_prior_baseline_scans(
+    client: AsyncClient, auth_headers: dict
+):
+    """A 15% deviation should not alert until the user has three prior scans."""
+    await _grant_consent(client, auth_headers)
+
+    for _ in range(2):
+        session_id = await _create_session(client, auth_headers)
+        resp = await client.put(
+            f"/api/v1/scans/sessions/{session_id}/complete",
+            json=GOOD_RESULT,
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+
+    session_id = await _create_session(client, auth_headers)
+    resp = await client.put(
+        f"/api/v1/scans/sessions/{session_id}/complete",
+        json={**GOOD_RESULT, "hr_bpm": 82.8},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["trend_alert"] is None
+
+
+@pytest.mark.asyncio
+async def test_trend_alert_uses_15pct_threshold_and_non_hr_metrics(
+    client: AsyncClient, auth_headers: dict
+):
+    """Trend alerting must fire at 15% deviation even when HR is stable."""
+    await _grant_consent(client, auth_headers)
+
+    for _ in range(3):
+        session_id = await _create_session(client, auth_headers)
+        resp = await client.put(
+            f"/api/v1/scans/sessions/{session_id}/complete",
+            json=GOOD_RESULT,
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+
+    session_id = await _create_session(client, auth_headers)
+    resp = await client.put(
+        f"/api/v1/scans/sessions/{session_id}/complete",
+        json={**GOOD_RESULT, "hrv_ms": 38.0},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["trend_alert"] == "consider_lab_followup"
+
+
 # ---------------------------------------------------------------------------
 # Helpers for rPPG integration tests
 # ---------------------------------------------------------------------------

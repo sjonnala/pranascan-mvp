@@ -22,27 +22,15 @@ from app.schemas.scan import (
 from app.services import consent_service
 from app.services.quality_gate import run_quality_gate
 from app.services.rppg_processor import build_frame_samples, process_frames
+from app.services.trend_engine import (
+    TrendBaseline,
+    baselines_from_row,
+    build_trend_baseline_query,
+    compute_trend_alert,
+)
 from app.services.voice_processor import build_audio_samples, process_audio
 
 router = APIRouter(prefix="/scans", tags=["Scans"])
-
-
-def _compute_trend_alert(
-    current_hr: float | None,
-    baseline_hr: float | None,
-    threshold_pct: float,
-) -> str | None:
-    """
-    Determine if a trend alert should be raised.
-    Returns "consider_lab_followup" or None.
-    Never returns diagnostic language.
-    """
-    if current_hr is None or baseline_hr is None or baseline_hr == 0:
-        return None
-    delta_pct = abs((current_hr - baseline_hr) / baseline_hr) * 100
-    if delta_pct >= threshold_pct:
-        return "consider_lab_followup"
-    return None
 
 
 @router.post("/sessions", response_model=ScanSessionResponse, status_code=status.HTTP_201_CREATED)
@@ -167,19 +155,23 @@ async def complete_scan_session(
             },
         )
 
-    # Compute trend alert from 7-day baseline
+    # Compute trend alert from the prior 7-day multi-metric baseline.
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=settings.trend_lookback_days)
-    baseline_stmt = select(func.avg(ScanResult.hr_bpm)).where(
-        ScanResult.user_id == session.user_id,
-        ScanResult.created_at >= cutoff,
-    )
+    baseline_stmt = build_trend_baseline_query(session.user_id, cutoff)
     baseline_result = await db.execute(baseline_stmt)
-    baseline_hr = baseline_result.scalar_one_or_none()
+    baselines = baselines_from_row(baseline_result.one())
 
-    trend_alert = _compute_trend_alert(
-        body.hr_bpm,
-        baseline_hr,
-        settings.trend_alert_threshold_pct,
+    trend_alert = compute_trend_alert(
+        {
+            "hr_bpm": body.hr_bpm,
+            "hrv_ms": body.hrv_ms,
+            "respiratory_rate": body.respiratory_rate,
+            "voice_jitter_pct": body.voice_jitter_pct,
+            "voice_shimmer_pct": body.voice_shimmer_pct,
+        },
+        baselines,
+        threshold_pct=settings.trend_alert_threshold_pct,
+        min_baseline_scans=settings.trend_min_baseline_scans,
     )
 
     # Merge quality-gate flags with rPPG processing flags (deduplicated)
@@ -280,21 +272,25 @@ async def get_scan_history(
         hrv_trend_delta = None
         if scan_result and sess.created_at:
             cutoff = sess.created_at - timedelta(days=settings.trend_lookback_days)
-            prior_stmt = select(
-                func.avg(ScanResult.hr_bpm),
-                func.avg(ScanResult.hrv_ms),
-            ).where(
-                ScanResult.user_id == user_id,
-                ScanResult.created_at >= cutoff,
-                ScanResult.created_at < sess.created_at,
-            )
+            prior_stmt = build_trend_baseline_query(user_id, cutoff, before=sess.created_at)
             prior_result = await db.execute(prior_stmt)
-            prior_hr, prior_hrv = prior_result.one()
+            baselines = baselines_from_row(prior_result.one())
 
-            if scan_result.hr_bpm is not None and prior_hr is not None:
-                hr_trend_delta = round(scan_result.hr_bpm - prior_hr, 2)
-            if scan_result.hrv_ms is not None and prior_hrv is not None:
-                hrv_trend_delta = round(scan_result.hrv_ms - prior_hrv, 2)
+            hr_baseline = baselines.get("hr_bpm", TrendBaseline(average=None, sample_count=0))
+            hrv_baseline = baselines.get("hrv_ms", TrendBaseline(average=None, sample_count=0))
+
+            if (
+                scan_result.hr_bpm is not None
+                and hr_baseline.average is not None
+                and hr_baseline.sample_count >= settings.trend_min_baseline_scans
+            ):
+                hr_trend_delta = round(scan_result.hr_bpm - hr_baseline.average, 2)
+            if (
+                scan_result.hrv_ms is not None
+                and hrv_baseline.average is not None
+                and hrv_baseline.sample_count >= settings.trend_min_baseline_scans
+            ):
+                hrv_trend_delta = round(scan_result.hrv_ms - hrv_baseline.average, 2)
 
         items.append(
             ScanHistoryItem(
