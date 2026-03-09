@@ -62,6 +62,10 @@ class ScanResult(Base):
     # Allowed values: "consider_lab_followup" | null — never diagnostic language
     trend_alert: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # Vascular age wellness indicator (v1 heuristic — not a clinical estimate)
+    vascular_age_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    vascular_age_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -30,6 +30,7 @@ from app.services.trend_engine import (
     build_trend_baseline_query,
     compute_trend_alert,
 )
+from app.services.vascular_age import estimate_vascular_age
 from app.services.voice_processor import build_audio_samples, process_audio
 
 router = APIRouter(prefix="/scans", tags=["Scans"])
@@ -190,6 +191,9 @@ async def complete_scan_session(
     if trend_alert is not None:
         await deliver_alert(session.user_id, trend_alert)
 
+    # Vascular age wellness indicator
+    vascular_age = estimate_vascular_age(body.hr_bpm, body.hrv_ms)
+
     # Merge quality-gate flags with rPPG processing flags (deduplicated)
     combined_flags = list(dict.fromkeys(gate.flags + rppg_flags))
 
@@ -209,6 +213,8 @@ async def complete_scan_session(
         audio_snr_db=body.audio_snr_db,
         flags=combined_flags,
         trend_alert=trend_alert,
+        vascular_age_estimate=vascular_age.estimate_years,
+        vascular_age_confidence=vascular_age.confidence,
     )
     db.add(scan_result)
 

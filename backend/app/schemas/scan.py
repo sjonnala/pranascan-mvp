@@ -114,6 +114,10 @@ class ScanResultResponse(BaseModel):
     # Never diagnostic language
     trend_alert: Literal["consider_lab_followup"] | None
 
+    # Vascular age wellness indicator (v1 heuristic — not a clinical estimate)
+    vascular_age_estimate: float | None = None
+    vascular_age_confidence: float | None = None
+
     created_at: datetime
 
     model_config = {"from_attributes": True}
