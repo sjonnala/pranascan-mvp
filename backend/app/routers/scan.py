@@ -116,18 +116,26 @@ async def complete_scan_session(
     # -------------------------------------------------------------------
     # Server-side rPPG processing (if frame_data provided)
     # -------------------------------------------------------------------
+    rppg_flags: list[str] = []
     if body.frame_data:
         frames = build_frame_samples([f.model_dump() for f in body.frame_data])
         rppg = process_frames(frames)
+        rppg_flags = rppg.flags  # propagated into result flags below
+
         if rppg.hr_bpm is not None:
             body = body.model_copy(
                 update={
                     "hr_bpm": rppg.hr_bpm,
                     "hrv_ms": rppg.hrv_ms,
                     "respiratory_rate": rppg.respiratory_rate,
+                    # rPPG quality score reflects spectral quality of the signal;
+                    # take the max so a high camera quality_score isn't overwritten
+                    # by a low rPPG quality when the signal is just quiet.
                     "quality_score": max(body.quality_score, rppg.quality_score),
                 }
             )
+        # If rPPG failed to extract HR and no client-provided HR exists,
+        # hr_bpm stays None. Scan completes; flags describe the cause.
 
     # -------------------------------------------------------------------
     # Server-side voice DSP processing (if audio_samples provided)
@@ -174,6 +182,9 @@ async def complete_scan_session(
         settings.trend_alert_threshold_pct,
     )
 
+    # Merge quality-gate flags with rPPG processing flags (deduplicated)
+    combined_flags = list(dict.fromkeys(gate.flags + rppg_flags))
+
     # Persist result
     scan_result = ScanResult(
         session_id=session_id,
@@ -188,7 +199,7 @@ async def complete_scan_session(
         motion_score=body.motion_score,
         face_confidence=body.face_confidence,
         audio_snr_db=body.audio_snr_db,
-        flags=gate.flags,
+        flags=combined_flags,
         trend_alert=trend_alert,
     )
     db.add(scan_result)
