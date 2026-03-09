@@ -5,6 +5,7 @@
 
 import {
   buildFrameSample,
+  computeFaceConfidence,
   computeLightingScore,
   computeMotionScore,
   computeOverallQualityScore,
@@ -160,6 +161,104 @@ describe('computeOverallQualityScore', () => {
     // Typical good scan: lighting=0.75, motion=0.97, face=0.85, snr=22dB
     const score = computeOverallQualityScore(0.75, 0.97, 0.85, 22.0);
     expect(score).toBeGreaterThan(0.7);
+  });
+});
+
+// ─── computeFaceConfidence ────────────────────────────────────────────────────
+
+describe('computeFaceConfidence', () => {
+  // ── Fallback for bad input ─────────────────────────────────────────────
+
+  it('returns 0.5 (uncertain) for empty string', () => {
+    expect(computeFaceConfidence('', 0.5, 1.0)).toBe(0.5);
+  });
+
+  it('returns 0.5 (uncertain) for a string shorter than 50 chars', () => {
+    expect(computeFaceConfidence('A'.repeat(30), 0.5, 1.0)).toBe(0.5);
+  });
+
+  // ── Range guarantee ────────────────────────────────────────────────────
+
+  it('returns value in [0, 1] for any valid combination of inputs', () => {
+    const lightings = [0.0, 0.1, 0.25, 0.5, 0.88, 1.0];
+    const motions = [0.0, 0.5, 0.95, 1.0];
+    const sizes = [100, 1_000, 3_500, 6_000, 9_500, 14_000];
+    for (const l of lightings) {
+      for (const m of motions) {
+        for (const s of sizes) {
+          const conf = computeFaceConfidence('A'.repeat(s), l, m);
+          expect(conf).toBeGreaterThanOrEqual(0.0);
+          expect(conf).toBeLessThanOrEqual(1.0);
+        }
+      }
+    }
+  });
+
+  // ── Good-scan pass (≥ 0.80 gate) ──────────────────────────────────────
+
+  it('returns ≥ 0.80 for a well-lit, face-sized, steady frame', () => {
+    // lighting=0.7 (well-lit), size=6 000 (optimal zone), motion=1.0
+    const conf = computeFaceConfidence('A'.repeat(6_000), 0.7, 1.0);
+    expect(conf).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('returns ≥ 0.80 for the lower edge of the lighting window', () => {
+    // lighting=0.25 is just inside the optimal zone
+    const conf = computeFaceConfidence('A'.repeat(5_000), 0.25, 1.0);
+    expect(conf).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('returns ≥ 0.80 for a large-but-reasonable frame (face still likely)', () => {
+    // size=9 500 = upper bound of optimal zone
+    const conf = computeFaceConfidence('A'.repeat(9_500), 0.7, 1.0);
+    expect(conf).toBeGreaterThanOrEqual(0.8);
+  });
+
+  // ── Poor-condition fail (< 0.80 gate) ─────────────────────────────────
+
+  it('returns < 0.80 for a very dark, tiny frame (no face detectable)', () => {
+    // size=600 → lighting≈0.037 (well below dark threshold)
+    const conf = computeFaceConfidence('A'.repeat(600), 0.037, 1.0);
+    expect(conf).toBeLessThan(0.8);
+  });
+
+  it('returns < 0.80 when lighting is below 0.20 regardless of frame size', () => {
+    const conf = computeFaceConfidence('A'.repeat(6_000), 0.05, 1.0);
+    expect(conf).toBeLessThan(0.8);
+  });
+
+  it('returns < 0.80 for an over-exposed, blown-out frame', () => {
+    // lighting=1.0 (fully blown out), very large JPEG
+    const conf = computeFaceConfidence('A'.repeat(14_000), 1.0, 1.0);
+    expect(conf).toBeLessThan(0.8);
+  });
+
+  // ── Sensitivity ────────────────────────────────────────────────────────
+
+  it('scores an optimal-zone frame higher than a sub-optimal small frame', () => {
+    // dim: size=2 000 is below FACE_SIZE_MIN (3 500) → sizeComponent < 1
+    // bright: size=6 500 is inside the optimal zone → sizeComponent = 1
+    const dim = computeFaceConfidence('A'.repeat(2_000), 0.3, 1.0);
+    const bright = computeFaceConfidence('A'.repeat(6_500), 0.65, 1.0);
+    expect(bright).toBeGreaterThan(dim);
+  });
+
+  it('steady frame scores higher than a high-motion frame (minor bonus)', () => {
+    const base64 = 'A'.repeat(6_000);
+    const lighting = 0.7;
+    const steady = computeFaceConfidence(base64, lighting, 1.0);
+    const moving = computeFaceConfidence(base64, lighting, 0.0);
+    expect(steady).toBeGreaterThan(moving);
+    // Bonus is minor (max 0.10) — not a primary gate dimension
+    expect(steady - moving).toBeLessThanOrEqual(0.11);
+  });
+
+  // ── Not a constant ────────────────────────────────────────────────────
+
+  it('is NOT a constant — different inputs produce different scores', () => {
+    const goodFrame = computeFaceConfidence('A'.repeat(6_000), 0.7, 1.0);
+    const darkFrame = computeFaceConfidence('A'.repeat(800), 0.05, 0.3);
+    expect(goodFrame).not.toBeCloseTo(darkFrame, 1);
   });
 });
 

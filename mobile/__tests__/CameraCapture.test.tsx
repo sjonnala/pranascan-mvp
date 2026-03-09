@@ -242,6 +242,40 @@ describe('quality update', () => {
     expect(metrics.lighting_score).toBeGreaterThanOrEqual(0);
     expect(metrics.lighting_score).toBeLessThanOrEqual(1);
   });
+
+  it('face_confidence is a computed value in [0, 1], not the old 0.85 constant', async () => {
+    // MOCK_B64 = 'A'.repeat(6_000) → lightingScore ≈ 0.44, face in optimal zone → ≥ 0.80
+    const onQualityUpdate = jest.fn();
+    const { getByTestId } = render(
+      <CameraCapture onComplete={noop} onQualityUpdate={onQualityUpdate} onCancel={noop} />,
+    );
+    fireEvent.press(getByTestId('start-scan'));
+
+    await waitFor(() => expect(onQualityUpdate).toHaveBeenCalled(), { timeout: 2000 });
+    const [metrics]: [QualityMetrics] = onQualityUpdate.mock.calls[0];
+    expect(metrics.face_confidence).toBeGreaterThanOrEqual(0);
+    expect(metrics.face_confidence).toBeLessThanOrEqual(1);
+    // Should NOT always be the old hardcoded proxy value — it is now computed.
+    // For the well-lit MOCK_B64 frame the heuristic returns ≥ 0.80.
+    expect(metrics.face_confidence).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('face_confidence varies with dark mock frame (< 0.80 for under-lit input)', async () => {
+    // Simulate a very dark frame (short base64) so face heuristic scores low
+    const DARK_B64 = 'A'.repeat(600); // tiny JPEG → dark/empty scene
+    mockTakePictureAsync.mockResolvedValue({ base64: DARK_B64, uri: 'mock://dark.jpg' });
+
+    const onQualityUpdate = jest.fn();
+    const { getByTestId } = render(
+      <CameraCapture onComplete={noop} onQualityUpdate={onQualityUpdate} onCancel={noop} />,
+    );
+    fireEvent.press(getByTestId('start-scan'));
+
+    await waitFor(() => expect(onQualityUpdate).toHaveBeenCalled(), { timeout: 2000 });
+    const [metrics]: [QualityMetrics] = onQualityUpdate.mock.calls[0];
+    // Very dark frame → face confidence below gate threshold
+    expect(metrics.face_confidence).toBeLessThan(0.8);
+  });
 });
 
 // ── No diagnostic language ───────────────────────────────────────────────────

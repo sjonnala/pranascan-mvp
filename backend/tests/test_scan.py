@@ -27,6 +27,11 @@ BAD_LIGHTING_RESULT = {
     "lighting_score": 0.2,  # Below 0.4 threshold
 }
 
+BAD_FACE_RESULT = {
+    **GOOD_RESULT,
+    "face_confidence": 0.4,  # Below 0.8 threshold — simulates heuristic returning low score
+}
+
 
 async def _grant_consent(client: AsyncClient, auth_headers: dict, user_id: str = TEST_USER_ID):
     await client.post(
@@ -119,6 +124,30 @@ async def test_complete_session_bad_lighting_rejected(client: AsyncClient, auth_
     assert resp.status_code == 422
     detail = resp.json()["detail"]
     assert "low_lighting" in detail["flags"]
+    assert "diagnosis" not in str(resp.json()).lower()
+
+
+@pytest.mark.asyncio
+async def test_complete_session_low_face_confidence_rejected(
+    client: AsyncClient, auth_headers: dict
+):
+    """Session with face_confidence below 0.80 is rejected by quality gate.
+
+    This exercises the path where the mobile heuristic (computeFaceConfidence)
+    returns a low score — e.g. a dark/empty frame — and the backend enforces
+    the gate independently of the client-side check.
+    """
+    await _grant_consent(client, auth_headers)
+    session_id = await _create_session(client, auth_headers)
+
+    resp = await client.put(
+        f"/api/v1/scans/sessions/{session_id}/complete",
+        json=BAD_FACE_RESULT,
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert "face_not_detected" in detail["flags"]
     assert "diagnosis" not in str(resp.json()).lower()
 
 

@@ -95,6 +95,82 @@ export function buildFrameSample(base64: string, tMs: number): FrameSample {
 }
 
 /**
+ * Estimates face-presence confidence (0–1) from observable JPEG properties.
+ *
+ * A native face detector (expo-face-detector / ML Kit) is the Sprint 3 target.
+ * Until then, three observable properties are combined without any ML dependency:
+ *
+ *   1. **Lighting window** — human faces need normalised luminance in [0.25, 0.88].
+ *      Below 0.25 (very dark) the face is obscured; above 0.88 (blown-out) the
+ *      signal is unusable. Values outside the window degrade the score linearly.
+ *
+ *   2. **JPEG size signature** — at quality=0.05, a front-facing selfie at
+ *      ~50–70 cm produces JPEG payloads in the 3 500–9 500-char range.
+ *      Frames below (empty/very dark scene) or well above (full texture, no face
+ *      centred) that zone score proportionally lower.
+ *
+ *   3. **Motion stability bonus** — steady frames (motionScore ≥ 0.95) add a
+ *      small contribution (+0.10 max). This is a minor bonus, not a gate; motion
+ *      has its own dedicated quality-gate dimension.
+ *
+ * Gate threshold: face_confidence > 0.80 (matches backend `min_face_confidence`).
+ *
+ * Fallback: returns 0.5 (uncertain, below gate) when base64 is too short to
+ * evaluate — rather than the old constant 0.85 proxy which always passed.
+ *
+ * Sprint 3: replace with `expo-face-detector` (ML Kit) for pixel-accurate
+ * bounding-box detection, confidence score, and landmark positions.
+ */
+export function computeFaceConfidence(
+  base64: string,
+  lightingScore: number,
+  motionScore: number,
+): number {
+  // Insufficient data → uncertain; return below-gate value rather than faking a pass.
+  if (!base64 || base64.length < 50) return 0.5;
+
+  // ── 1. Lighting window ───────────────────────────────────────────────────
+  // Optimal face zone: [0.25, 0.88].  Ramp linearly outside it.
+  let lightComponent: number;
+  if (lightingScore < 0.25) {
+    // Dim/dark: score from 0 at total darkness up to 0.60 at lower edge of window.
+    lightComponent = (lightingScore / 0.25) * 0.6;
+  } else if (lightingScore <= 0.88) {
+    lightComponent = 1.0;
+  } else {
+    // Over-exposed: still likely a face but rPPG signal is degraded.
+    // Ramp from 1.0 at 0.88 down to 0.5 at 1.0.
+    lightComponent = 1.0 - ((lightingScore - 0.88) / 0.12) * 0.5;
+  }
+
+  // ── 2. JPEG size signature ───────────────────────────────────────────────
+  // Face-at-selfie-distance zone: 3 500–9 500 chars at quality=0.05.
+  const FACE_SIZE_MIN = 3_500;
+  const FACE_SIZE_OPT_MAX = 9_500;
+  const len = base64.length;
+  let sizeComponent: number;
+  if (len >= FACE_SIZE_MIN && len <= FACE_SIZE_OPT_MAX) {
+    sizeComponent = 1.0;
+  } else if (len < FACE_SIZE_MIN) {
+    // Frame too small → very dark/empty scene; no face likely.
+    sizeComponent = len / FACE_SIZE_MIN;
+  } else {
+    // Larger frame → over-exposed or highly textured scene.
+    // Clamp floor at 0.4 (face may still be present, just over-lit).
+    sizeComponent = Math.max(0.4, 1.0 - (len - FACE_SIZE_OPT_MAX) / FACE_SIZE_OPT_MAX);
+  }
+
+  // ── 3. Motion stability bonus ────────────────────────────────────────────
+  // Max bonus: 0.10.  Degraded smoothly below the 0.95 gate threshold.
+  const stabilityBonus = Math.min(motionScore / 0.95, 1.0) * 0.1;
+
+  // ── Weighted combination ─────────────────────────────────────────────────
+  // lightComponent (55%) + sizeComponent (35%) + stabilityBonus (up to 10%)
+  const raw = lightComponent * 0.55 + sizeComponent * 0.35 + stabilityBonus;
+  return Math.max(0.0, Math.min(1.0, raw));
+}
+
+/**
  * Computes an overall quality score from a collected set of frame samples.
  * Used to produce the final quality_score submitted with the scan result.
  */

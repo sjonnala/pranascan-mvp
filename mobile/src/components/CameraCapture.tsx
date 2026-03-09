@@ -21,6 +21,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { FrameSample, QualityMetrics } from '../types';
 import {
   buildFrameSample,
+  computeFaceConfidence,
   computeLightingScore,
   computeMotionScore,
   computeOverallQualityScore,
@@ -32,13 +33,10 @@ const SCAN_DURATION_MS = 30_000;
 /** Frame sampling interval. ~2fps: fast enough for quality monitoring, low CPU. */
 const FRAME_INTERVAL_MS = 500;
 /**
- * Face confidence proxy.
- * Real detection requires expo-face-detector (Sprint 3).
- * 0.85 is above the 0.80 quality-gate threshold so the gate
- * evaluates lighting + motion honestly, not blocked by missing face detector.
+ * Audio SNR is evaluated in VoiceCapture; default here keeps gate open.
+ * Face confidence is now computed per-frame via computeFaceConfidence()
+ * (Sprint 3 will replace with native ML Kit face detector).
  */
-const FACE_CONFIDENCE_PROXY = 0.85;
-/** Audio SNR is evaluated in VoiceCapture; default here keeps gate open. */
 const AUDIO_SNR_DEFAULT = 20.0;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -76,6 +74,12 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
   const prevBase64Ref = useRef<string | null>(null);
   const lastLightingRef = useRef<number>(0.5);
   const lastMotionRef = useRef<number>(1.0);
+  /**
+   * Tracks the most-recently computed face confidence so finaliseScan() can
+   * use the real value instead of a constant proxy.
+   * Initialised to 0.5 (uncertain) — updated each frame via computeFaceConfidence().
+   */
+  const lastFaceConfidenceRef = useRef<number>(0.5);
   const frameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -118,11 +122,12 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
     const frames = frameDataRef.current;
     const lighting = lastLightingRef.current;
     const motion = lastMotionRef.current;
+    const faceConf = lastFaceConfidenceRef.current;
 
     const finalQuality: QualityMetrics = {
       lighting_score: lighting,
       motion_score: motion,
-      face_confidence: FACE_CONFIDENCE_PROXY,
+      face_confidence: faceConf,
       audio_snr_db: AUDIO_SNR_DEFAULT,
     };
 
@@ -134,7 +139,7 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
       quality_score: computeOverallQualityScore(
         lighting,
         motion,
-        FACE_CONFIDENCE_PROXY,
+        faceConf,
         AUDIO_SNR_DEFAULT,
       ),
       frame_data: frames,
@@ -150,6 +155,7 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
     setIsScanning(true);
     frameDataRef.current = [];
     prevBase64Ref.current = null;
+    lastFaceConfidenceRef.current = 0.5; // reset to uncertain at scan start
     scanStartRef.current = Date.now();
 
     // Frame sampling interval
@@ -163,8 +169,13 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
           ? computeMotionScore(prevBase64Ref.current, base64)
           : 1.0;
 
+        // Real per-frame face confidence: heuristic from lighting + JPEG size +
+        // motion stability.  Sprint 3 will replace with ML Kit face detector.
+        const faceConf = computeFaceConfidence(base64, lighting, motion);
+
         lastLightingRef.current = lighting;
         lastMotionRef.current = motion;
+        lastFaceConfidenceRef.current = faceConf;
         prevBase64Ref.current = base64;
 
         const frame = buildFrameSample(base64, elapsed);
@@ -173,7 +184,7 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
         const metrics: QualityMetrics = {
           lighting_score: lighting,
           motion_score: motion,
-          face_confidence: FACE_CONFIDENCE_PROXY,
+          face_confidence: faceConf,
           audio_snr_db: AUDIO_SNR_DEFAULT,
         };
         setCurrentQuality(metrics);
