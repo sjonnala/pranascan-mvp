@@ -76,3 +76,7 @@ docker compose up --build
 ## Sprint 1 (Mar 9–22, 2026)
 
 See [docs/sprint-1-plan.md](docs/sprint-1-plan.md) and [docs/sprint-1-backlog.md](docs/sprint-1-backlog.md).
+
+## Current Status
+
+See [docs/project-status.md](docs/project-status.md) for a code-based completion assessment against the original MVP execution plan in [docs/sprint-plan.md](docs/sprint-plan.md).
