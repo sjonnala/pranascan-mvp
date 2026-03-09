@@ -66,6 +66,11 @@ class ScanResultSubmit(BaseModel):
 
     flags: list[str] = Field(default_factory=list)
 
+    # Aggregate RGB means for anemia color proxy (on-device derived, not raw pixels)
+    frame_r_mean: float | None = Field(default=None, ge=0.0, le=255.0)
+    frame_g_mean: float | None = Field(default=None, ge=0.0, le=255.0)
+    frame_b_mean: float | None = Field(default=None, ge=0.0, le=255.0)
+
     @field_validator("flags")
     @classmethod
     def validate_flags(cls, v: list[str]) -> list[str]:
@@ -117,6 +122,11 @@ class ScanResultResponse(BaseModel):
     # Vascular age wellness indicator (v1 heuristic — not a clinical estimate)
     vascular_age_estimate: float | None = None
     vascular_age_confidence: float | None = None
+
+    # Anemia screening wellness indicator (confidence-gated, v1 heuristic — not diagnostic)
+    hb_proxy_score: float | None = None
+    anemia_wellness_label: str | None = None
+    anemia_confidence: float | None = None
 
     created_at: datetime
 

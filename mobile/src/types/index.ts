@@ -136,6 +136,12 @@ export interface ScanResultPayload {
   flags: QualityFlag[];
   /** Per-frame RGB means (optional, for future server-side validation). Raw video stays on device. */
   frame_data?: FrameSample[];
+  /** Mean red channel across all scan frames (0–255). For conjunctiva color proxy. */
+  frame_r_mean?: number;
+  /** Mean green channel across all scan frames (0–255). */
+  frame_g_mean?: number;
+  /** Mean blue channel across all scan frames (0–255). */
+  frame_b_mean?: number;
 }
 
 // ─── Navigation ──────────────────────────────────────────────────────────────

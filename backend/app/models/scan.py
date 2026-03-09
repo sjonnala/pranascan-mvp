@@ -66,6 +66,11 @@ class ScanResult(Base):
     vascular_age_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
     vascular_age_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Anemia screening wellness indicator (v1 color heuristic — not diagnostic)
+    hb_proxy_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    anemia_wellness_label: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    anemia_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

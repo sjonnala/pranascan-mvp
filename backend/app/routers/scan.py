@@ -20,6 +20,7 @@ from app.schemas.scan import (
     ScanSessionWithResult,
 )
 from app.services import consent_service
+from app.services.anemia_screen import screen_anemia
 from app.services.delivery_service import deliver_alert
 from app.services.quality_gate import run_quality_gate
 from app.services.rppg_processor import build_frame_samples, process_frames
@@ -194,6 +195,15 @@ async def complete_scan_session(
     # Vascular age wellness indicator
     vascular_age = estimate_vascular_age(body.hr_bpm, body.hrv_ms)
 
+    # Anemia screening wellness indicator (confidence-gated color heuristic)
+    anemia = screen_anemia(
+        r_mean=body.frame_r_mean,
+        g_mean=body.frame_g_mean,
+        b_mean=body.frame_b_mean,
+        lighting_score=body.lighting_score,
+        motion_score=body.motion_score,
+    )
+
     # Merge quality-gate flags with rPPG processing flags (deduplicated)
     combined_flags = list(dict.fromkeys(gate.flags + rppg_flags))
 
@@ -215,6 +225,9 @@ async def complete_scan_session(
         trend_alert=trend_alert,
         vascular_age_estimate=vascular_age.estimate_years,
         vascular_age_confidence=vascular_age.confidence,
+        hb_proxy_score=anemia.hb_proxy_score,
+        anemia_wellness_label=anemia.wellness_label,
+        anemia_confidence=anemia.confidence,
     )
     db.add(scan_result)
 

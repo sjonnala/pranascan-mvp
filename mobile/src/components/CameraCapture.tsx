@@ -59,6 +59,12 @@ export interface CameraResult {
   frame_data: FrameSample[];
   /** rPPG signal quality score from on-device processing (0–1). */
   rppg_quality: number;
+  /** Aggregate mean red channel across scan frames (0–255). For conjunctiva color proxy. */
+  frame_r_mean: number | null;
+  /** Aggregate mean green channel across scan frames (0–255). */
+  frame_g_mean: number | null;
+  /** Aggregate mean blue channel across scan frames (0–255). */
+  frame_b_mean: number | null;
 }
 
 interface CameraCaptureProps {
@@ -136,6 +142,12 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
     // the device — only the derived hr_bpm/hrv_ms/respiratory_rate are sent.
     const rppgResult = processFrames(frames);
 
+    // Compute aggregate means for anemia color proxy (stays within wellness indicator bounds)
+    const frameCount = frames.length;
+    const aggRMean = frameCount > 0 ? frames.reduce((s, f) => s + f.r_mean, 0) / frameCount : null;
+    const aggGMean = frameCount > 0 ? frames.reduce((s, f) => s + f.g_mean, 0) / frameCount : null;
+    const aggBMean = frameCount > 0 ? frames.reduce((s, f) => s + f.b_mean, 0) / frameCount : null;
+
     const finalQuality: QualityMetrics = {
       lighting_score: lighting,
       motion_score: motion,
@@ -156,6 +168,9 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
       ),
       frame_data: frames,     // retained on device, not submitted to backend
       rppg_quality: rppgResult.quality_score,
+      frame_r_mean: aggRMean,
+      frame_g_mean: aggGMean,
+      frame_b_mean: aggBMean,
     });
   }, [stopTimers, onComplete]);
 

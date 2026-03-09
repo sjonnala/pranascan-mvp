@@ -93,6 +93,10 @@ export function ScanScreen({ userId, onComplete, onCancel }: ScanScreenProps) {
         // Raw frame bytes stay on device — they are not sent to the backend.
         // audio_samples intentionally omitted: on-device voice DSP has run.
         // Audio samples never leave the device (privacy-aligned edge-first architecture).
+        // Aggregate RGB means for anemia conjunctiva color proxy (on-device derived scalars only).
+        frame_r_mean: cameraResult.frame_r_mean ?? undefined,
+        frame_g_mean: cameraResult.frame_g_mean ?? undefined,
+        frame_b_mean: cameraResult.frame_b_mean ?? undefined,
       };
 
       try {
