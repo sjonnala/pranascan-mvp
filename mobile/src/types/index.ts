@@ -102,8 +102,9 @@ export interface ScanSessionWithResult {
 // ─── Frame data ───────────────────────────────────────────────────────────────
 
 /**
- * Per-frame colour channel means sent to the backend for server-side rPPG.
- * Raw pixels NEVER leave the device — only per-frame aggregate means.
+ * Per-frame colour channel means used on-device for rPPG processing.
+ * Raw pixels NEVER leave the device. These values are used locally only —
+ * they are NOT sent to the backend.
  */
 export interface FrameSample {
   t_ms: number;    // milliseconds from scan start
@@ -114,6 +115,13 @@ export interface FrameSample {
 
 // ─── Scan payload sent to backend ────────────────────────────────────────────
 
+/**
+ * Payload submitted to the backend after a scan session.
+ *
+ * Edge-first architecture: all signal processing (rPPG and voice DSP) runs
+ * on-device. Only the derived wellness indicator scalars are sent to the
+ * backend. Raw frame data and audio samples NEVER leave the device.
+ */
 export interface ScanResultPayload {
   hr_bpm?: number;
   hrv_ms?: number;
@@ -126,10 +134,8 @@ export interface ScanResultPayload {
   face_confidence?: number;
   audio_snr_db?: number;
   flags: QualityFlag[];
-  /** Per-frame RGB means for server-side rPPG processing. Raw video stays on device. */
+  /** Per-frame RGB means (optional, for future server-side validation). Raw video stays on device. */
   frame_data?: FrameSample[];
-  /** Normalised audio amplitude samples for server-side voice DSP. */
-  audio_samples?: number[];
 }
 
 // ─── Navigation ──────────────────────────────────────────────────────────────

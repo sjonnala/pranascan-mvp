@@ -13,7 +13,7 @@ const THRESHOLDS = {
   audio_snr_db: 15.0,
 } as const;
 
-function evaluateQuality(metrics: QualityMetrics): QualityGateResult {
+export function evaluateQuality(metrics: QualityMetrics): QualityGateResult {
   const flags: QualityFlag[] = [];
 
   if (metrics.lighting_score <= THRESHOLDS.lighting_score) {

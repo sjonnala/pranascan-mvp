@@ -3,8 +3,9 @@
  *
  * The mobile client captures real microphone input, derives a live waveform
  * from metering updates, extracts audio samples from the recorded clip, and
- * computes a client-side SNR proxy before handing the samples to the backend
- * voice DSP pipeline.
+ * runs on-device voice DSP (jitter, shimmer, SNR) via voiceProcessor.
+ * Only the derived wellness indicator scalars leave the device — audio samples
+ * never leave the device.
  */
 
 import { Audio, AVPlaybackStatus } from 'expo-av';
@@ -20,6 +21,7 @@ import {
   meteringDbToAmplitude,
   resampleAudioSamples,
 } from '../utils/voiceAnalyzer';
+import { processVoice } from '../utils/voiceProcessor';
 
 const RECORD_DURATION_MS = 5_000;
 const STATUS_UPDATE_INTERVAL_MS = 100;
@@ -54,16 +56,14 @@ const RECORDING_OPTIONS: Audio.RecordingOptions = {
 };
 
 export interface VoiceResult {
-  /** Backend computes jitter from audio_samples. */
+  /** On-device computed voice jitter percentage (wellness indicator). */
   voice_jitter_pct: number | undefined;
-  /** Backend computes shimmer from audio_samples. */
+  /** On-device computed voice shimmer percentage (wellness indicator). */
   voice_shimmer_pct: number | undefined;
   /** Client-side SNR proxy in dB from the real recording. */
   audio_snr_db: number | undefined;
   /** Whether the captured voice signal passes the SNR quality threshold. */
   passed_snr: boolean;
-  /** Real audio samples derived from the recorded clip for backend DSP. */
-  audio_samples?: number[];
 }
 
 interface VoiceCaptureProps {
@@ -180,12 +180,12 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
     const activeRecording = recordingRef.current;
     if (!activeRecording) {
       setRecordingState('done');
+      // On-device voice DSP complete. Only derived indicators leave the device.
       onComplete({
         voice_jitter_pct: undefined,
         voice_shimmer_pct: undefined,
         audio_snr_db: undefined,
         passed_snr: false,
-        audio_samples: undefined,
       });
       return;
     }
@@ -207,24 +207,27 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
         pcmFrames.length > 0 ? audioSamples : meteringSamplesRef.current,
       );
 
+      // Run on-device voice DSP — computes jitter and shimmer locally.
+      const voiceDsp = processVoice(audioSamples);
+
       recordingRef.current = null;
       setRecordingState('done');
+      // On-device voice DSP complete. Only derived indicators leave the device.
       onComplete({
-        voice_jitter_pct: undefined,
-        voice_shimmer_pct: undefined,
+        voice_jitter_pct: voiceDsp.jitter_pct ?? undefined,
+        voice_shimmer_pct: voiceDsp.shimmer_pct ?? undefined,
         audio_snr_db: snrDb,
         passed_snr: typeof snrDb === 'number' && snrDb > AUDIO_SNR_PASS_THRESHOLD_DB,
-        audio_samples: audioSamples,
       });
     } catch {
       recordingRef.current = null;
       setRecordingState('done');
+      // On-device voice DSP complete. Only derived indicators leave the device.
       onComplete({
         voice_jitter_pct: undefined,
         voice_shimmer_pct: undefined,
         audio_snr_db: undefined,
         passed_snr: false,
-        audio_samples: undefined,
       });
     }
   }, [extractAudioSamples, onComplete, stopTimer]);

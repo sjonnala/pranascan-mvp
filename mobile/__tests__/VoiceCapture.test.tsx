@@ -191,7 +191,8 @@ describe('VoiceCapture', () => {
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
     const result = onComplete.mock.calls[0][0];
-    expect(result.audio_samples).toHaveLength(TARGET_AUDIO_SAMPLE_COUNT);
+    // audio_samples no longer in result — on-device voice DSP runs instead
+    expect(result.audio_samples).toBeUndefined();
     expect(typeof result.audio_snr_db).toBe('number');
     expect(result.passed_snr).toBe(true);
   });
@@ -215,7 +216,8 @@ describe('VoiceCapture', () => {
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
     const result = onComplete.mock.calls[0][0];
-    expect(result.audio_samples).toHaveLength(TARGET_AUDIO_SAMPLE_COUNT);
+    // audio_samples no longer in result — on-device voice DSP runs instead
+    expect(result.audio_samples).toBeUndefined();
     expect(typeof result.audio_snr_db).toBe('number');
   });
 

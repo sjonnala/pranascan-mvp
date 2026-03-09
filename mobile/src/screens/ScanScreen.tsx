@@ -9,7 +9,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { CameraCapture, CameraResult } from '../components/CameraCapture';
 import { VoiceCapture, VoiceResult } from '../components/VoiceCapture';
 import { QualityGate } from '../components/QualityGate';
-import { useQualityCheck } from '../hooks/useQualityCheck';
+import { evaluateQuality, useQualityCheck } from '../hooks/useQualityCheck';
 import { useScan } from '../hooks/useScan';
 import { QualityMetrics, ScanResultPayload } from '../types';
 
@@ -61,15 +61,26 @@ export function ScanScreen({ userId, onComplete, onCancel }: ScanScreenProps) {
       if (!cameraResult || !sessionId) return;
       setStep('submitting');
 
-      // Edge-processing path: on-device rPPG has already run in CameraCapture.
+      // Edge-processing path: on-device rPPG and voice DSP have already run.
       // We submit the derived wellness indicator values directly — frame_data
-      // is NOT sent to the backend (privacy-aligned edge-first architecture).
-      // null from on-device → undefined so the backend omits those fields.
+      // and audio_samples are NOT sent to the backend (privacy-aligned
+      // edge-first architecture). null from on-device → undefined so the
+      // backend omits those fields.
+
+      // Build final QualityMetrics, overriding audio_snr_db with the real
+      // voice-capture SNR if available.
+      const finalMetrics: import('../types').QualityMetrics = {
+        ...cameraResult.quality,
+        audio_snr_db: voiceResult.audio_snr_db ?? cameraResult.quality.audio_snr_db,
+      };
+      // Evaluate quality gates and collect real flags.
+      const qualityFlags = evaluateQuality(finalMetrics).flags;
+
       const payload: ScanResultPayload = {
         hr_bpm: cameraResult.hr_bpm ?? undefined,
         hrv_ms: cameraResult.hrv_ms ?? undefined,
         respiratory_rate: cameraResult.respiratory_rate ?? undefined,
-        // voice metrics are computed by the backend from real audio_samples
+        // Voice metrics computed on-device by voiceProcessor.
         voice_jitter_pct: voiceResult.voice_jitter_pct,
         voice_shimmer_pct: voiceResult.voice_shimmer_pct,
         quality_score: cameraResult.quality_score,
@@ -77,11 +88,11 @@ export function ScanScreen({ userId, onComplete, onCancel }: ScanScreenProps) {
         motion_score: cameraResult.quality.motion_score,
         face_confidence: cameraResult.quality.face_confidence,
         audio_snr_db: voiceResult.audio_snr_db,
-        flags: [],
+        flags: qualityFlags,
         // frame_data intentionally omitted: on-device rPPG has already run.
         // Raw frame bytes stay on device — they are not sent to the backend.
-        // audio_samples sent to backend for server-side voice DSP (no on-device DSP yet)
-        audio_samples: voiceResult.audio_samples,
+        // audio_samples intentionally omitted: on-device voice DSP has run.
+        // Audio samples never leave the device (privacy-aligned edge-first architecture).
       };
 
       try {
