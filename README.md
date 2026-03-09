@@ -73,10 +73,48 @@ docker compose up --build
 - **Consent records append-only** — full history preserved
 - **Post-scan latency < 15 s**
 
-## Sprint 1 (Mar 9–22, 2026)
+## rPPG v1 — Implementation Notes
 
+<<<<<<< HEAD
 See [docs/sprint-1-plan.md](docs/sprint-1-plan.md) and [docs/sprint-1-backlog.md](docs/sprint-1-backlog.md).
 
 ## Current Status
 
 See [docs/project-status.md](docs/project-status.md) for a code-based completion assessment against the original MVP execution plan in [docs/sprint-plan.md](docs/sprint-plan.md).
+=======
+The current rPPG pipeline processes per-frame RGB means sent by the mobile client (raw video stays on-device). Key characteristics and known limitations:
+
+| Property | Value |
+|----------|-------|
+| Algorithm | Green-channel bandpass (Butterworth order-4, 0.7–4.0 Hz) |
+| Peak detection | scipy `find_peaks` with prominence threshold |
+| HRV | RMSSD of successive RR intervals |
+| Respiratory proxy | Low-frequency envelope (0.1–0.5 Hz) |
+| Quality score | Cardiac-band power / total signal power |
+| Mobile capture rate | ~2 fps (async `takePictureAsync`) |
+| Reliable HR range at 2 fps | **42–58 bpm** (Nyquist = 1 Hz = 60 bpm) |
+| HR > 60 bpm at 2 fps | Aliased — **not reliable** at current capture rate |
+| Upsampling | Sparse signals upsampled to 10 Hz via linear interpolation |
+| Frame min | 30 frames over ≥ 8 seconds |
+
+**Sprint 3 targets:** ≥ 4 fps capture (extend reliable range to ~120 bpm), native frame processor for true per-pixel luminance, multi-channel POS/CHROM fusion.
+
+> **Wellness indicator only.** HR, HRV, and respiratory rate estimates are not diagnostic values and are not validated for clinical use.
+
+## Voice DSP v1 — Implementation Notes
+
+Voice jitter/shimmer computation is implemented server-side (`app/services/voice_processor.py`) but the mobile client does not yet send real audio samples. Current state:
+
+- Backend: zero-crossing F0 estimation, jitter/shimmer from peak analysis, SNR from voiced/silence segmentation ✅
+- Mobile: `audio_samples` field present in payload schema; expo-av wiring deferred to **S2-03**
+- Until S2-03: `voice_jitter_pct` and `voice_shimmer_pct` are `null` in scan results
+
+## Sprint History
+
+| Sprint | Window | Status |
+|--------|--------|--------|
+| Sprint 1 | Mar 9–22, 2026 | ✅ Complete |
+| Sprint 2.1 | Mar 23–Apr 5, 2026 | 🚧 In progress |
+
+See [docs/sprint-2.1-backlog.md](docs/sprint-2.1-backlog.md) and [docs/daily-status.md](docs/daily-status.md).
+>>>>>>> 0d260ab (updaitng sprint progress)
