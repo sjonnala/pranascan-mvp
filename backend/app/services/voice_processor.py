@@ -36,9 +36,16 @@ from scipy import signal
 SAMPLE_RATE = 4410  # Hz (downsampled from 44100)
 MIN_SAMPLES = SAMPLE_RATE * 2  # at least 2 seconds
 SILENCE_THRESHOLD = 0.01  # amplitude below this is silence
-F0_LOW_HZ = 80.0  # minimum F0 — lowest typical voice fundamental
-F0_HIGH_HZ = 400.0  # maximum F0 — highest typical voice fundamental
-MIN_VOICED_FRACTION = 0.5  # >50% of recording must be voiced
+F0_LOW_HZ = 80.0   # minimum F0 — lowest typical voice fundamental
+F0_HIGH_HZ = 450.0  # maximum F0 — highest typical voice (extended for higher-pitched Indian voices)
+MIN_VOICED_FRACTION = 0.5  # >50% of recording must be voiced (standard path)
+# D26: Accented vowel accommodation
+# Indian-accented sustained vowels (e.g. "aa", "eh") can have shorter voiced
+# segments with distinct formant transitions at the onset/offset.  When the
+# SNR is high (≥ 20 dB) the signal is clean enough to proceed at a lower
+# voiced-fraction threshold.
+MIN_VOICED_FRACTION_ACCOMMODATED = 0.35  # relaxed threshold for high-SNR accented vowels
+SNR_THRESHOLD_FOR_ACCOMMODATION_DB = 20.0  # minimum SNR to use relaxed threshold
 NOISE_FLOOR_DB = -60.0  # dB floor for SNR calculation
 
 
@@ -104,12 +111,6 @@ def process_audio(samples: Sequence[float]) -> VoiceResult:
     voiced_mask = frame_rms > SILENCE_THRESHOLD
     voiced_fraction = float(np.mean(voiced_mask))
 
-    if voiced_fraction < MIN_VOICED_FRACTION:
-        flags.append("insufficient_voiced_content")
-
-    # -----------------------------------------------------------------------
-    # 2. SNR proxy: RMS voiced / RMS silence
-    # -----------------------------------------------------------------------
     voiced_rms_vals = frame_rms[voiced_mask]
     silence_rms_vals = frame_rms[~voiced_mask]
 
@@ -126,9 +127,28 @@ def process_audio(samples: Sequence[float]) -> VoiceResult:
         flags.append("high_noise")
 
     # -----------------------------------------------------------------------
+    # D26: Accented vowel accommodation
+    # Indian-accented sustained vowels may have voiced_fraction 0.35–0.50 due
+    # to formant transitions and different vowel duration norms.  When the SNR
+    # is high (≥ 20 dB) the recording is clean enough to proceed with analysis.
+    # -----------------------------------------------------------------------
+    effective_min_voiced = MIN_VOICED_FRACTION
+    if (
+        voiced_fraction < MIN_VOICED_FRACTION
+        and voiced_fraction >= MIN_VOICED_FRACTION_ACCOMMODATED
+        and snr_db is not None
+        and snr_db >= SNR_THRESHOLD_FOR_ACCOMMODATION_DB
+    ):
+        effective_min_voiced = MIN_VOICED_FRACTION_ACCOMMODATED
+        flags.append("accented_vowel_accommodated")
+
+    if voiced_fraction < MIN_VOICED_FRACTION:
+        flags.append("insufficient_voiced_content")
+
+    # -----------------------------------------------------------------------
     # 3. Extract voiced segment for F0 analysis
     # -----------------------------------------------------------------------
-    if voiced_fraction < MIN_VOICED_FRACTION or len(voiced_rms_vals) < 5:
+    if voiced_fraction < effective_min_voiced or len(voiced_rms_vals) < 5:
         return VoiceResult(
             jitter_pct=None,
             shimmer_pct=None,

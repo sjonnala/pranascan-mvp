@@ -186,3 +186,92 @@ export function computeOverallQualityScore(
     Math.min(1, lightingScore * 0.3 + motionScore * 0.3 + faceConfidence * 0.3 + snrNorm * 0.1),
   );
 }
+
+// ---------------------------------------------------------------------------
+// D26 Bug bash — edge case detection helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Occlusion hint values returned by detectOcclusionHint().
+ * These are advisory only — never block a scan.
+ */
+export type OcclusionHint = 'glasses_suspected' | 'beard_suspected' | null;
+
+/**
+ * Detects potential partial face occlusion from JPEG properties.
+ *
+ * Heuristic: glasses and thick frames add high-frequency texture to a selfie,
+ * producing a larger JPEG than expected for the measured luminance level.
+ * Beards add a low-luminance region that skews the size/brightness ratio.
+ *
+ *   glasses_suspected : size-to-luminance ratio unusually HIGH
+ *                       (high texture at mid-to-low luminance)
+ *   beard_suspected   : very low lighting score but non-trivially large frame
+ *                       (dark lower face region)
+ *   null              : no clear occlusion signal
+ *
+ * Sprint 3: replace with ML Kit face landmark detection.
+ *
+ * @param base64        - base64-encoded JPEG string
+ * @param lightingScore - normalised lighting score [0, 1] from computeLightingScore()
+ */
+export function detectOcclusionHint(base64: string, lightingScore: number): OcclusionHint {
+  if (!base64 || base64.length < 50) return null;
+
+  const len = base64.length;
+
+  // Expected JPEG size for this luminance level using the linear size model
+  const expectedSize = JPEG_DARK_SIZE + lightingScore * (JPEG_BRIGHT_SIZE - JPEG_DARK_SIZE);
+  const sizeRatio = len / Math.max(expectedSize, 1);
+
+  // Glasses produce a JPEG roughly 40–100% larger than expected for the
+  // luminance level (lenses, frames, reflections add high-frequency texture).
+  if (sizeRatio > 1.4 && lightingScore > 0.2 && lightingScore < 0.85) {
+    return 'glasses_suspected';
+  }
+
+  // Beard: dark lower-face region → low luminance score but JPEG still
+  // moderately sized because the beard has texture.
+  if (lightingScore < 0.30 && len > JPEG_DARK_SIZE * 2.5) {
+    return 'beard_suspected';
+  }
+
+  return null;
+}
+
+/**
+ * Determines whether detected motion was transient (short-lived and recoverable).
+ *
+ * A scan is considered to have recovered from motion when:
+ *   - ≥ 2/3 of frame motion scores are above the stable threshold, AND
+ *   - the low-motion frames are concentrated at the START or END of the scan
+ *     (not distributed throughout), meaning the user settled quickly.
+ *
+ * This avoids rejecting scans where the user moved briefly at the beginning
+ * (repositioning) or at the very end (lowering the phone).
+ *
+ * @param motionScores  - array of per-frame motion scores in capture order
+ * @param stableThreshold - score above which a frame is considered stable (default 0.95)
+ * @returns true if motion was transient and the scan should be considered recoverable
+ */
+export function isTransientMotion(
+  motionScores: number[],
+  stableThreshold: number = 0.95,
+): boolean {
+  if (motionScores.length < 6) return false; // not enough frames to judge
+
+  const stableCount = motionScores.filter(s => s >= stableThreshold).length;
+  const stableFraction = stableCount / motionScores.length;
+
+  // Must be mostly stable overall
+  if (stableFraction < 0.65) return false;
+
+  // Check if unstable frames are concentrated in the outer 25% (start or end)
+  const edgeFrames = Math.max(2, Math.floor(motionScores.length * 0.25));
+  const middleScores = motionScores.slice(edgeFrames, motionScores.length - edgeFrames);
+  const middleStableFraction =
+    middleScores.filter(s => s >= stableThreshold).length / Math.max(middleScores.length, 1);
+
+  // Middle section should be fully stable if motion was only edge-transient
+  return middleStableFraction >= 0.90;
+}
