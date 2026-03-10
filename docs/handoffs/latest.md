@@ -1,89 +1,84 @@
-# PranaScan Handoff — 2026-03-10 19:45 UTC
+# PranaScan Handoff — 2026-03-10 21:01 UTC
+_Saved due to token rate limit_
 
 ## 1. Branch + Commit
 
 - **Branch:** `main`
-- **Last clean commit:** `03cd4c6` — `d5: skin tone calibration`
-- **Remote:** pushed to `origin/main`
-- **Uncommitted work-in-progress:** None. Working tree clean.
+- **Last commit:** `4d641d2` — `d26-wip: quality gate severity tiers, accented vowel accommodation, occlusion hint + transient motion detection (tests pending)`
+- **Status:** WIP — committed but tests not yet written
+- **Remote:** NOT YET PUSHED (push on resume)
 
 ---
 
-## 2. Weeks 1–3 Status — ALL COMPLETE ✅
+## 2. D26 Bug Bash — IN PROGRESS
 
-| Week | Status | Notes |
-|---|---|---|
-| Week 1 (D1–D7) | ✅ Complete | D5 skin tone calibration closed this session |
-| Week 2 (D8–D14) | ✅ Complete | All milestones done |
-| Week 3 (D15–D21) | ✅ Complete (code) | D21 internal pilot = operational task (needs real users) |
+### What's done (committed, not pushed)
 
-**Validation as of this handoff:**
+**`backend/app/services/quality_gate.py`** — rewritten:
+- `QualityFlagSeverity` enum (WARNING / ERROR)
+- Borderline zones: lighting `(0.33, 0.40]` → `borderline_lighting` warning; face `(0.68, 0.80]` → `partial_occlusion_suspected` warning; audio SNR `(10.0, 15.0]` → `borderline_noise` warning
+- Motion: still hard gate (no warning zone — by design)
+- `QualityGateResult` gains `warnings: list[str]` field
+- Hard failures only reject; warnings allow scan to proceed with flag
+
+**`backend/app/services/voice_processor.py`** — accented vowel accommodation:
+- `F0_HIGH_HZ` extended 400 → 450 Hz (higher-pitched Indian voices)
+- New constants: `MIN_VOICED_FRACTION_ACCOMMODATED = 0.35`, `SNR_THRESHOLD_FOR_ACCOMMODATION_DB = 20.0`
+- If `voiced_fraction` in `[0.35, 0.50)` AND `snr_db >= 20.0` → proceed with `accented_vowel_accommodated` flag
+
+**`mobile/src/utils/frameAnalyzer.ts`** — two new functions:
+- `detectOcclusionHint(base64, lightingScore) → OcclusionHint` — glasses (size/luminance ratio > 1.4x) or beard (dark but textured)
+- `isTransientMotion(motionScores, threshold) → boolean` — recoverable if unstable frames are in outer 25% + ≥65% overall stable + middle ≥90% stable
+
+### What's NOT done yet (resume here)
+
+1. **Write tests** (most important):
+   - `backend/tests/test_quality_gate.py` — severity tiers, borderline zones, partial_occlusion_suspected, warnings field
+   - `backend/tests/test_voice.py` additions — accented vowel accommodation (low voiced_fraction + high SNR → proceeds)
+   - `mobile/__tests__/frameAnalyzer.test.ts` additions — `detectOcclusionHint`, `isTransientMotion`
+2. **Run full suite** — confirm 204+ backend, 116+ mobile
+3. **Push to origin**
+4. **Update docs/sprint-2-tracker.md** — mark D26 done
+
+---
+
+## 3. Validation State
+
 ```
 python3 -m ruff check .          → All checks passed!
-PYTHONPATH=backend pytest -q     → 204 passed in 8.77s
-npx eslint src/ --ext .ts,.tsx   → (clean)
-npx tsc --noEmit                 → (clean)
-npm test -- --watchAll=false     → 116 passed, 9 suites, 0 failures
+PYTHONPATH=backend pytest -q     → 204 passed (tests for D26 changes NOT yet written)
+npx eslint src/ --ext .ts,.tsx   → ESLINT_CLEAN
+npx tsc --noEmit                 → TSC_CLEAN
+npm test -- --watchAll=false     → NOT YET RUN after mobile changes
 ```
 
 ---
 
-## 3. Session Work Log (2026-03-10)
-
-| Commit | Story | What was built |
-|---|---|---|
-| `9e03d7a` | s2-13 | Telegram delivery — alert + report delivery via Bot API, feature-flagged, 7 tests |
-| `d7f091c` | s3-01 | OpenClaw background agent — `agent_runner.py`, `/internal/agent/run` endpoint, `agent/pranascan_agent.py` CLI, 13 tests |
-| `2fe076a` | s3-02 | E2E demo flow smoke test — full pipeline Consent→Scan→Alert→Report→Agent, 3 tests |
-| `03cd4c6` | d5 | Skin tone calibration — sRGB→Lab ITA estimator, Fitzpatrick Types 1–6, per-type HR/HRV correction, accuracy note for Types 5–6, wired into scan pipeline, 25 tests |
-
----
-
-## 4. Week 4 — Pending Items (ordered by priority)
-
-| # | Item | Sprint Plan Day | Type | Notes |
-|---|---|---|---|---|
-| 1 | **D26 Bug bash** | D26 | Code | Edge cases: glasses/beards, low-light recovery, accented vowels, rapid motion |
-| 2 | **D28 Feedback instrumentation** | D28 | Code | In-app NPS + "Was this scan useful?" (mobile + backend) |
-| 3 | **D27 Beta onboarding flow** | D27 | Code | Invite system, beta user model, onboarding screens |
-| 4 | **D22 Bench test harness** | D22 | Code | Accuracy measurement framework — HR/HRV vs finger-clip oximeter comparison |
-| 5 | **D24 Skin-tone audit tooling** | D24 | Code | Per-type accuracy report generator using bench test data |
-| 6 | **D30 Go/no-go KPI template** | D30 | Code | Exit checklist, KPI readout doc |
-| 7 | **D21 Internal pilot** | D21 | Operational | 5–10 team members, 7 days daily scans — needs real users |
-| 8 | **D22 Bench test execution** | D22 | Operational | 20 volunteer participants — needs real people |
-| 9 | **D27 Beta user recruitment** | D27 | Operational | 50 users — should have started by D20 |
-| 10 | **WhatsApp delivery** | — | TODO | Deferred — Telegram active, WhatsApp needs Business API |
-
----
-
-## 5. Open Risks
-
-- **D21 internal pilot not started** — critical feedback loop before closed beta
-- **Telegram credentials not set in env** — delivery is feature-flagged, no-op without `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`
-- **D5 calibration is an MVP linear approximation** — full Diverse-rPPG 2026 calibration requires licensed dataset (Sprint 3)
-- **Beta user recruitment** — should be underway now if targeting D27
-
----
-
-## 6. Resume Prompt
+## 4. Resume Prompt
 
 ```
-Resume PranaScan work at /home/ubuntu/pranascan-mvp.
+Resume PranaScan D26 bug bash at /home/ubuntu/pranascan-mvp.
 
 Context:
-- Repo: main branch, last clean commit 03cd4c6 (d5: skin tone calibration).
-- Weeks 1–3 COMPLETE. All checks green (204 backend, 116 mobile).
-- See docs/sprint-2-tracker.md and docs/handoffs/latest.md for full state.
-- Starting Week 4 work.
+- Branch: main, last commit 4d641d2 (d26-wip).
+- D26 implementation is committed but NOT pushed and tests are NOT written yet.
+- See docs/handoffs/latest.md §2 for exactly what was changed.
 
-Next task: D26 Bug bash — edge case hardening:
-  1. Low-light recovery: graceful degradation when lighting drops mid-scan
-  2. Glasses/beard detection: flag partial face occlusion in quality gate
-  3. Accented vowels: ensure voice DSP handles non-standard vowel shapes
-  4. Rapid motion recovery: re-evaluate quality gate after motion spike settles
-
-Rules:
-- Reconstruct state from docs/ and git before starting.
-- Run all 5 validation commands and paste raw output before committing.
-- Update docs/handoffs/latest.md after each commit.
+Exact next steps:
+1. git push origin main
+2. Write tests:
+   - backend/tests/test_quality_gate.py — severity tiers (borderline lighting,
+     partial_occlusion_suspected, borderline_noise, warnings field, hard fails still reject)
+   - Add to backend/tests/test_voice.py — accented vowel accommodation
+     (voiced_fraction=0.40 + snr_db=25 → proceeds with accented_vowel_accommodated flag;
+      voiced_fraction=0.40 + snr_db=10 → still rejected)
+   - Add to mobile/__tests__/frameAnalyzer.test.ts — detectOcclusionHint + isTransientMotion
+3. Run ALL checks and paste raw output:
+   python3 -m ruff check .
+   PYTHONPATH=backend python3 -m pytest -q
+   cd mobile && npx eslint src/ --ext .ts,.tsx
+   cd mobile && npx tsc --noEmit
+   cd mobile && npm test -- --watchAll=false
+4. Commit as: "d26: D26 bug bash complete — quality gate severity tiers, accented vowel, occlusion hint, transient motion (tests)"
+5. Push and update docs/handoffs/latest.md + docs/sprint-2-tracker.md
 ```
