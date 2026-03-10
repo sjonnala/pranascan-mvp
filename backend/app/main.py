@@ -11,7 +11,8 @@ from app.database import create_all_tables
 from app.middleware.audit_log import audit_log_middleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.timing import TimingMiddleware
-from app.routers import audit, auth, consent, scan, vitality_report
+from app.models import abha as _abha_models  # noqa: F401 — register tables with Base.metadata
+from app.routers import abha, audit, auth, consent, scan, vitality_report
 
 
 @asynccontextmanager
@@ -61,6 +62,7 @@ app.include_router(consent.router, prefix=API_PREFIX)
 app.include_router(scan.router, prefix=API_PREFIX)
 app.include_router(audit.router, prefix=API_PREFIX)
 app.include_router(vitality_report.router, prefix=API_PREFIX)
+app.include_router(abha.router, prefix=API_PREFIX)
 
 
 @app.get("/health", tags=["Health"])

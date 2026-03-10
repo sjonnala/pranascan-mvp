@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     # Rate limiting
     scan_rate_limit_per_hour: int = 20  # max scan sessions a user may create per hour
 
+    # ABHA / ABDM integration
+    abha_enabled: bool = False  # Feature flag — False by default; set True to activate
+    abha_sandbox: bool = True  # True = sandbox/mock gateway; False = live ABDM gateway
+    abha_gateway_url: str = "https://dev.abdm.gov.in/gateway"  # ABDM sandbox base URL
+    abha_client_id: str | None = None  # ABDM HIU/HIP client ID (required for live mode)
+    abha_client_secret: str | None = None  # ABDM client secret (required for live mode)
+
 
 import logging as _logging  # noqa: E402
 
