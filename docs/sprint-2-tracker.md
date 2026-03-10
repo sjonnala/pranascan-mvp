@@ -72,7 +72,17 @@ npm test -- --watchAll=false     → 116 passed, 9 suites, 0 failures
 
 ---
 
-## Active Work
+## Session Work Log (2026-03-10)
 
-**Currently working on:** Item 1 — Telegram delivery channel  
-**Started:** 2026-03-10 18:54 UTC
+| Commit | Item |
+|---|---|
+| `9e03d7a` | s2-13: Telegram delivery channel (feature-flagged) |
+| `d7f091c` | s3-01: OpenClaw background agent (agent_runner + HTTP trigger + CLI) |
+| `2fe076a` | s3-02: E2E demo flow smoke test (Consent→Capture→Alert→Report→Agent) |
+| `03cd4c6` | d5: Skin tone calibration (Fitzpatrick Types 1–6, ITA estimator, accuracy note) |
+
+## Week 3 Status — COMPLETE ✅
+All code-deliverable Week 3 milestones done. D21 (internal pilot) is operational.
+
+## Week 4 Readiness
+**Ready to start.** See `docs/handoffs/latest.md` for ordered task list.
