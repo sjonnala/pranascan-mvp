@@ -10,7 +10,7 @@ from app.config import settings
 from app.database import create_all_tables
 from app.middleware.audit_log import audit_log_middleware
 from app.middleware.timing import TimingMiddleware
-from app.routers import audit, auth, consent, scan
+from app.routers import audit, auth, consent, scan, vitality_report
 
 
 @asynccontextmanager
@@ -56,6 +56,7 @@ app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(consent.router, prefix=API_PREFIX)
 app.include_router(scan.router, prefix=API_PREFIX)
 app.include_router(audit.router, prefix=API_PREFIX)
+app.include_router(vitality_report.router, prefix=API_PREFIX)
 
 
 @app.get("/health", tags=["Health"])
