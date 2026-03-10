@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = None  # BotFather token; enables Telegram delivery
     telegram_chat_id: str | None = None  # target chat/user ID for alert + report delivery
 
+    # Agent (background daemon)
+    agent_secret_key: str | None = None  # if set, enables POST /internal/agent/run endpoint
+
     # Rate limiting
     scan_rate_limit_per_hour: int = 20  # max scan sessions a user may create per hour
 
