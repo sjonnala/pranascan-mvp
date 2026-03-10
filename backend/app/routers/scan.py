@@ -25,6 +25,7 @@ from app.services.anemia_screen import screen_anemia
 from app.services.delivery_service import deliver_alert
 from app.services.quality_gate import run_quality_gate
 from app.services.rppg_processor import build_frame_samples, process_frames
+from app.services.skin_tone import apply_skin_tone_calibration
 from app.services.trend_engine import (
     TrendBaseline,
     baselines_from_row,
@@ -130,6 +131,10 @@ async def complete_scan_session(
     if body.frame_data:
         frames = build_frame_samples([f.model_dump() for f in body.frame_data])
         rppg = process_frames(frames)
+
+        # Apply skin tone calibration (Fitzpatrick Types 3–6 / Diverse-rPPG 2026)
+        rppg, _skin_cal = apply_skin_tone_calibration(rppg, frames)
+
         rppg_flags = rppg.flags  # propagated into result flags below
 
         if rppg.hr_bpm is not None:
@@ -138,9 +143,9 @@ async def complete_scan_session(
                     "hr_bpm": rppg.hr_bpm,
                     "hrv_ms": rppg.hrv_ms,
                     "respiratory_rate": rppg.respiratory_rate,
-                    # rPPG quality score reflects spectral quality of the signal;
-                    # take the max so a high camera quality_score isn't overwritten
-                    # by a low rPPG quality when the signal is just quiet.
+                    # rPPG quality score reflects spectral quality of the signal
+                    # post skin-tone calibration; take max so a high camera
+                    # quality_score isn't overwritten by a quiet signal.
                     "quality_score": max(body.quality_score, rppg.quality_score),
                 }
             )
