@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     trend_cooldown_hours: int = 48  # suppress re-alerts within this window
     alert_webhook_url: str | None = None  # if set, POST alert payloads here
 
+    # Telegram delivery (optional — feature-flagged)
+    telegram_bot_token: str | None = None  # BotFather token; enables Telegram delivery
+    telegram_chat_id: str | None = None  # target chat/user ID for alert + report delivery
+
     # Rate limiting
     scan_rate_limit_per_hour: int = 20  # max scan sessions a user may create per hour
 

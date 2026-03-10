@@ -8,7 +8,7 @@ from app.database import get_db
 from app.middleware.auth import require_auth
 from app.models.vitality_report import VitalityReport
 from app.schemas.vitality_report import VitalityReportResponse
-from app.services.delivery_service import deliver_alert
+from app.services.delivery_service import deliver_alert, deliver_report
 from app.services.vitality_report import generate_report
 
 router = APIRouter(prefix="/reports", tags=["Vitality Reports"])
@@ -68,7 +68,10 @@ async def generate_vitality_report(
     await db.flush()
     await db.refresh(report)
 
-    # Deliver via webhook stub if alerts were present in the period
+    # Deliver report summary (Telegram if configured)
+    await deliver_report(user_id, report_data.summary_text)
+
+    # Deliver alert notification if alerts were present in the period
     if report_data.alert_count > 0:
         await deliver_alert(user_id, "weekly_vitality_report_with_alerts")
 
