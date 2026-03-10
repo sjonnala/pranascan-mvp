@@ -9,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import settings
 from app.database import create_all_tables
 from app.middleware.audit_log import audit_log_middleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.timing import TimingMiddleware
 from app.routers import audit, auth, consent, scan, vitality_report
 
@@ -46,6 +47,9 @@ app.add_middleware(
 
 # Timing middleware — outermost so it measures total request time
 app.add_middleware(TimingMiddleware)
+
+# Security headers middleware — wraps audit log middleware
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Audit logging middleware
 app.add_middleware(BaseHTTPMiddleware, dispatch=audit_log_middleware)

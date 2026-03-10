@@ -41,5 +41,26 @@ class Settings(BaseSettings):
     trend_cooldown_hours: int = 48  # suppress re-alerts within this window
     alert_webhook_url: str | None = None  # if set, POST alert payloads here
 
+    # Rate limiting
+    scan_rate_limit_per_hour: int = 20  # max scan sessions a user may create per hour
+
+
+import logging as _logging  # noqa: E402
+
+_settings_logger = _logging.getLogger(__name__)
+
+
+def _warn_insecure_defaults(s: "Settings") -> None:
+    if s.environment == "production" and s.secret_key == "dev-secret-key-change-in-production":
+        raise RuntimeError(
+            "FATAL: SECRET_KEY is set to the default dev value in a production environment. "
+            "Set a strong random SECRET_KEY environment variable before starting the server."
+        )
+    if s.environment != "production" and s.secret_key == "dev-secret-key-change-in-production":
+        _settings_logger.warning(
+            "Using default dev SECRET_KEY. Set SECRET_KEY env var before deploying to production."
+        )
+
 
 settings = Settings()
+_warn_insecure_defaults(settings)

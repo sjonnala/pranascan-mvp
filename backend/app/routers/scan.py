@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
+from sqlalchemy import func as sql_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -54,6 +55,23 @@ async def create_scan_session(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Active consent required to start a scan session. Please grant consent first.",
+        )
+
+    # Rate limit: max N scan sessions per user per hour
+    one_hour_ago = datetime.now(tz=timezone.utc) - timedelta(hours=1)
+    rate_count_stmt = select(sql_func.count(ScanSession.id)).where(
+        ScanSession.user_id == user_id,
+        ScanSession.created_at >= one_hour_ago,
+    )
+    rate_result = await db.execute(rate_count_stmt)
+    session_count_this_hour = rate_result.scalar_one()
+    if session_count_this_hour >= settings.scan_rate_limit_per_hour:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"Rate limit exceeded: maximum {settings.scan_rate_limit_per_hour} "
+                "scans per hour. Please try again later."
+            ),
         )
 
     session = ScanSession(
