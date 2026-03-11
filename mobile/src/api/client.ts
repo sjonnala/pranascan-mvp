@@ -7,6 +7,8 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import {
   ConsentRecord,
   ConsentStatus,
+  ScanFeedback,
+  ScanFeedbackPayload,
   ScanResult,
   ScanResultPayload,
   ScanSession,
@@ -151,7 +153,40 @@ export async function completeScanSession(
   return data;
 }
 
-export async function getScanSession(sessionId: string): Promise<ScanSessionWithResult> {
+export async function getScanSession(
+  sessionId: string,
+  userId?: string
+): Promise<ScanSessionWithResult> {
+  if (userId) {
+    await ensureAuthSession(userId);
+  }
   const { data } = await http.get<ScanSessionWithResult>(`/scans/sessions/${sessionId}`);
   return data;
+}
+
+// ─── Feedback ────────────────────────────────────────────────────────────────
+
+export async function submitScanFeedback(
+  userId: string,
+  payload: ScanFeedbackPayload
+): Promise<ScanFeedback> {
+  await ensureAuthSession(userId);
+  const { data } = await http.post<ScanFeedback>('/feedback', payload);
+  return data;
+}
+
+export async function getFeedbackForSession(
+  sessionId: string,
+  userId: string
+): Promise<ScanFeedback | null> {
+  await ensureAuthSession(userId);
+  try {
+    const { data } = await http.get<ScanFeedback>(`/feedback/sessions/${sessionId}`);
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      return null;
+    }
+    throw error;
+  }
 }

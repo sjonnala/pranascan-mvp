@@ -11,11 +11,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { getScanSession } from '../api/client';
-import { ScanResult } from '../types';
+import { getFeedbackForSession, getScanSession, submitScanFeedback } from '../api/client';
+import { ScanFeedback, ScanResult, UsefulResponse } from '../types';
 
 interface MetricCardProps {
   label: string;
@@ -44,26 +45,78 @@ function MetricCard({ label, value, unit, description, testID }: MetricCardProps
 
 interface ResultsScreenProps {
   sessionId: string;
+  userId: string;
   onScanAgain: () => void;
 }
 
-export function ResultsScreen({ sessionId, onScanAgain }: ResultsScreenProps) {
+const NPS_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+export function ResultsScreen({ sessionId, userId, onScanAgain }: ResultsScreenProps) {
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [feedback, setFeedback] = useState<ScanFeedback | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [usefulResponse, setUsefulResponse] = useState<UsefulResponse | null>(null);
+  const [npsScore, setNpsScore] = useState<number | null>(null);
+  const [comment, setComment] = useState('');
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
+
     (async () => {
       try {
-        const sessionData = await getScanSession(sessionId);
+        const [sessionData, existingFeedback] = await Promise.all([
+          getScanSession(sessionId, userId),
+          getFeedbackForSession(sessionId, userId),
+        ]);
+
+        if (!isMounted) {
+          return;
+        }
+
         setResult(sessionData.result);
+        setFeedback(existingFeedback);
       } catch {
-        setError('Could not load your results. Please check your connection.');
+        if (isMounted) {
+          setError('Could not load your results. Please check your connection.');
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     })();
-  }, [sessionId]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [sessionId, userId]);
+
+  const handleSubmitFeedback = async () => {
+    if (!usefulResponse || isSubmittingFeedback) {
+      return;
+    }
+
+    setFeedbackError(null);
+    setIsSubmittingFeedback(true);
+
+    try {
+      const created = await submitScanFeedback(userId, {
+        session_id: sessionId,
+        useful_response: usefulResponse,
+        nps_score: npsScore ?? undefined,
+        comment: comment.trim() || undefined,
+      });
+      setFeedback(created);
+      setComment('');
+    } catch {
+      setFeedbackError('Could not save your feedback right now. Please try again.');
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -102,7 +155,6 @@ export function ResultsScreen({ sessionId, onScanAgain }: ResultsScreenProps) {
         </Text>
       </View>
 
-      {/* Trend alert — only "consider_lab_followup", never diagnostic language */}
       {result.trend_alert === 'consider_lab_followup' && (
         <View style={styles.trendAlert} testID="trend-alert">
           <Text style={styles.trendAlertTitle}>📊 Trend Notice</Text>
@@ -175,6 +227,95 @@ export function ResultsScreen({ sessionId, onScanAgain }: ResultsScreenProps) {
           healthcare professional before making any health decisions.
         </Text>
       </View>
+
+      {feedback ? (
+        <View style={styles.feedbackThanksCard} testID="feedback-thanks">
+          <Text style={styles.feedbackTitle}>Thanks for the feedback</Text>
+          <Text style={styles.feedbackSummary}>
+            Useful: {feedback.useful_response === 'useful' ? 'Yes' : 'Needs work'}
+            {feedback.nps_score != null ? ` · NPS ${feedback.nps_score}/10` : ''}
+          </Text>
+          {feedback.comment ? (
+            <Text style={styles.feedbackComment}>{`"${feedback.comment}"`}</Text>
+          ) : null}
+        </View>
+      ) : (
+        <View style={styles.feedbackCard} testID="feedback-card">
+          <Text style={styles.feedbackTitle}>Was this scan useful?</Text>
+          <Text style={styles.feedbackSubtitle}>
+            Help us improve the post-scan experience with one quick response.
+          </Text>
+
+          <View style={styles.feedbackChoices}>
+            <TouchableOpacity
+              style={[
+                styles.feedbackChoice,
+                usefulResponse === 'useful' && styles.feedbackChoiceSelected,
+              ]}
+              onPress={() => setUsefulResponse('useful')}
+              testID="feedback-useful"
+            >
+              <Text style={styles.feedbackChoiceText}>Useful</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.feedbackChoice,
+                usefulResponse === 'needs_work' && styles.feedbackChoiceSelected,
+              ]}
+              onPress={() => setUsefulResponse('needs_work')}
+              testID="feedback-needs-work"
+            >
+              <Text style={styles.feedbackChoiceText}>Needs work</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.npsTitle}>How likely are you to use PranaScan again?</Text>
+          <View style={styles.npsRow}>
+            {NPS_OPTIONS.map((score) => (
+              <TouchableOpacity
+                key={score}
+                style={[styles.npsPill, npsScore === score && styles.npsPillSelected]}
+                onPress={() => setNpsScore(score)}
+                testID={`feedback-nps-${score}`}
+              >
+                <Text style={styles.npsPillText}>{score}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TextInput
+            style={styles.commentInput}
+            placeholder="Any quick note? (optional)"
+            placeholderTextColor="#666688"
+            value={comment}
+            onChangeText={setComment}
+            multiline
+            maxLength={500}
+            textAlignVertical="top"
+            testID="feedback-comment-input"
+          />
+
+          {feedbackError ? (
+            <Text style={styles.feedbackError} testID="feedback-error">
+              {feedbackError}
+            </Text>
+          ) : null}
+
+          <TouchableOpacity
+            style={[
+              styles.feedbackSubmitButton,
+              (!usefulResponse || isSubmittingFeedback) && styles.feedbackSubmitDisabled,
+            ]}
+            onPress={handleSubmitFeedback}
+            disabled={!usefulResponse || isSubmittingFeedback}
+            testID="feedback-submit"
+          >
+            <Text style={styles.feedbackSubmitText}>
+              {isSubmittingFeedback ? 'Saving…' : 'Send feedback'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <TouchableOpacity style={styles.scanAgainButton} onPress={onScanAgain} testID="scan-again">
         <Text style={styles.scanAgainText}>Scan Again</Text>
@@ -319,16 +460,135 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   disclaimer: {
-    backgroundColor: '#0a1a0a',
+    backgroundColor: '#1a1a2e',
     borderRadius: 12,
-    padding: 14,
+    padding: 16,
     marginTop: 20,
   },
   disclaimerText: {
     fontSize: 13,
-    color: '#4ade80',
+    color: '#aaaacc',
     lineHeight: 20,
-    textAlign: 'center',
+  },
+  feedbackCard: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 14,
+    padding: 16,
+    marginTop: 16,
+  },
+  feedbackThanksCard: {
+    backgroundColor: '#102018',
+    borderColor: '#4ade80',
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 16,
+    marginTop: 16,
+  },
+  feedbackTitle: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  feedbackSubtitle: {
+    color: '#aaaacc',
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 12,
+  },
+  feedbackChoices: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  feedbackChoice: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2f2f55',
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: '#141428',
+  },
+  feedbackChoiceSelected: {
+    borderColor: '#4f46e5',
+    backgroundColor: '#232347',
+  },
+  feedbackChoiceText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  npsTitle: {
+    color: '#aaaacc',
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  npsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  npsPill: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#141428',
+    borderWidth: 1,
+    borderColor: '#2f2f55',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  npsPillSelected: {
+    backgroundColor: '#233329',
+    borderColor: '#4ade80',
+  },
+  npsPillText: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  commentInput: {
+    minHeight: 76,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2f2f55',
+    backgroundColor: '#141428',
+    color: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  feedbackError: {
+    color: '#f87171',
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  feedbackSubmitButton: {
+    backgroundColor: '#4f46e5',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  feedbackSubmitDisabled: {
+    opacity: 0.5,
+  },
+  feedbackSubmitText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  feedbackSummary: {
+    color: '#d1fae5',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  feedbackComment: {
+    color: '#d1fae5',
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
   scanAgainButton: {
     backgroundColor: '#4f46e5',
@@ -339,7 +599,7 @@ const styles = StyleSheet.create({
   },
   scanAgainText: {
     color: '#ffffff',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
   },
 });

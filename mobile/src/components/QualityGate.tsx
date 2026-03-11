@@ -11,9 +11,13 @@ import { QualityFlag, QualityGateResult } from '../types';
 
 const FLAG_LABELS: Record<QualityFlag, string> = {
   low_lighting: 'Move to a brighter area',
+  borderline_lighting: 'Lighting is borderline but still usable',
   motion_detected: 'Hold your phone steady',
   face_not_detected: 'Position your face in the frame',
+  partial_occlusion_suspected: 'Face is partially occluded',
   high_noise: 'Find a quieter environment',
+  borderline_noise: 'Audio is usable but a bit noisy',
+  accented_vowel_accommodated: 'Voice captured with accent accommodation',
   partial_scan: 'Keep still for the full duration',
 };
 

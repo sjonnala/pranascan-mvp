@@ -38,9 +38,13 @@ export interface QualityMetrics {
 
 export type QualityFlag =
   | 'low_lighting'
+  | 'borderline_lighting'
   | 'motion_detected'
   | 'face_not_detected'
+  | 'partial_occlusion_suspected'
   | 'high_noise'
+  | 'borderline_noise'
+  | 'accented_vowel_accommodated'
   | 'partial_scan';
 
 export interface QualityGateResult {
@@ -97,6 +101,27 @@ export interface ScanResult {
 export interface ScanSessionWithResult {
   session: ScanSession;
   result: ScanResult | null;
+}
+
+// ─── Feedback ────────────────────────────────────────────────────────────────
+
+export type UsefulResponse = 'useful' | 'needs_work';
+
+export interface ScanFeedback {
+  id: string;
+  session_id: string;
+  user_id: string;
+  useful_response: UsefulResponse;
+  nps_score: number | null;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface ScanFeedbackPayload {
+  session_id: string;
+  useful_response: UsefulResponse;
+  nps_score?: number;
+  comment?: string;
 }
 
 // ─── Frame data ───────────────────────────────────────────────────────────────

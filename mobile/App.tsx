@@ -45,6 +45,7 @@ export default function App() {
       {screen === 'results' && completedSessionId && (
         <ResultsScreen
           sessionId={completedSessionId}
+          userId={userId!}
           onScanAgain={() => setScreen('scan')}
         />
       )}
