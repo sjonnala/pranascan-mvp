@@ -45,6 +45,19 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = None  # BotFather token; enables Telegram delivery
     telegram_chat_id: str | None = None  # target chat/user ID for alert + report delivery
 
+    # WhatsApp delivery (optional — feature-flagged)
+    whatsapp_enabled: bool = False  # master feature flag for WhatsApp Cloud API delivery
+    whatsapp_access_token: str | None = None  # Meta access token for Cloud API
+    whatsapp_phone_number_id: str | None = None  # WhatsApp Business phone number ID
+    whatsapp_recipient_phone: str | None = None  # target phone in E.164 format
+    whatsapp_api_version: str = "v20.0"  # Graph API version for Cloud API messaging
+
+    # Closed beta onboarding
+    beta_onboarding_enabled: bool = False  # invite-code gate for closed beta builds/deployments
+    beta_seed_invite_code: str | None = None  # optional bootstrap invite for local/dev beta testing
+    beta_seed_invite_cohort: str = "general_beta"
+    beta_seed_invite_max_redemptions: int = 50
+
     # Agent (background daemon)
     agent_secret_key: str | None = None  # if set, enables POST /internal/agent/run endpoint
 

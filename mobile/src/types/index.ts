@@ -27,6 +27,22 @@ export interface ConsentStatus {
   deletion_scheduled_at: string | null;
 }
 
+// ─── Beta onboarding ─────────────────────────────────────────────────────────
+
+export interface BetaStatus {
+  user_id: string;
+  beta_onboarding_enabled: boolean;
+  enrolled: boolean;
+  invite_required: boolean;
+  cohort_name: string | null;
+  invite_code: string | null;
+  enrolled_at: string | null;
+}
+
+export interface BetaInviteRedeemPayload {
+  invite_code: string;
+}
+
 // ─── Quality ──────────────────────────────────────────────────────────────────
 
 export interface QualityMetrics {
@@ -38,9 +54,13 @@ export interface QualityMetrics {
 
 export type QualityFlag =
   | 'low_lighting'
+  | 'borderline_lighting'
   | 'motion_detected'
   | 'face_not_detected'
+  | 'partial_occlusion_suspected'
   | 'high_noise'
+  | 'borderline_noise'
+  | 'accented_vowel_accommodated'
   | 'partial_scan';
 
 export interface QualityGateResult {
@@ -99,6 +119,27 @@ export interface ScanSessionWithResult {
   result: ScanResult | null;
 }
 
+// ─── Feedback ────────────────────────────────────────────────────────────────
+
+export type UsefulResponse = 'useful' | 'needs_work';
+
+export interface ScanFeedback {
+  id: string;
+  session_id: string;
+  user_id: string;
+  useful_response: UsefulResponse;
+  nps_score: number | null;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface ScanFeedbackPayload {
+  session_id: string;
+  useful_response: UsefulResponse;
+  nps_score?: number;
+  comment?: string;
+}
+
 // ─── Frame data ───────────────────────────────────────────────────────────────
 
 /**
@@ -147,6 +188,7 @@ export interface ScanResultPayload {
 // ─── Navigation ──────────────────────────────────────────────────────────────
 
 export type RootStackParamList = {
+  Beta: undefined;
   Consent: undefined;
   Scan: { userId: string };
   Results: { sessionId: string; userId: string };

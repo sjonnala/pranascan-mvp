@@ -4,15 +4,50 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
-from app.database import create_all_tables
+from app.database import AsyncSessionLocal, create_all_tables
 from app.middleware.audit_log import audit_log_middleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.timing import TimingMiddleware
-from app.models import abha as _abha_models  # noqa: F401 — register tables with Base.metadata
-from app.routers import abha, agent, audit, auth, consent, scan, vitality_report
+from app.models import (
+    abha as _abha_models,  # noqa: F401 — register tables with Base.metadata
+)
+from app.models import (
+    beta as _beta_models,  # noqa: F401 — register tables with Base.metadata
+)
+from app.models import (
+    feedback as _feedback_models,  # noqa: F401 — register tables with Base.metadata
+)
+from app.models.beta import BetaInvite
+from app.routers import abha, agent, audit, auth, beta, consent, feedback, scan, vitality_report
+
+
+async def seed_beta_invite_if_configured() -> None:
+    """Create a reusable invite when a local/dev seed code is configured."""
+    if not settings.beta_seed_invite_code:
+        return
+
+    code = settings.beta_seed_invite_code.strip().upper()
+    if not code:
+        return
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(BetaInvite).where(BetaInvite.code == code))
+        invite = result.scalar_one_or_none()
+        if invite is not None:
+            return
+
+        db.add(
+            BetaInvite(
+                code=code,
+                cohort_name=settings.beta_seed_invite_cohort,
+                max_redemptions=settings.beta_seed_invite_max_redemptions,
+            )
+        )
+        await db.commit()
 
 
 @asynccontextmanager
@@ -21,6 +56,7 @@ async def lifespan(app: FastAPI):
     # In dev/test, auto-create tables. Production uses Alembic migrations.
     if settings.environment in ("development", "test"):
         await create_all_tables()
+        await seed_beta_invite_if_configured()
     yield
 
 
@@ -64,6 +100,8 @@ app.include_router(audit.router, prefix=API_PREFIX)
 app.include_router(vitality_report.router, prefix=API_PREFIX)
 app.include_router(abha.router, prefix=API_PREFIX)
 app.include_router(agent.router, prefix=API_PREFIX)
+app.include_router(feedback.router, prefix=API_PREFIX)
+app.include_router(beta.router, prefix=API_PREFIX)
 
 
 @app.get("/health", tags=["Health"])

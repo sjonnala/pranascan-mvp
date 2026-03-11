@@ -99,6 +99,41 @@ describe('api client auth wiring', () => {
           };
         }
 
+        if (url === '/feedback') {
+          const body = data as {
+            session_id: string;
+            useful_response: 'useful' | 'needs_work';
+            nps_score?: number;
+            comment?: string;
+          };
+          return {
+            data: {
+              id: 'feedback-1',
+              session_id: body.session_id,
+              user_id: 'user-123',
+              useful_response: body.useful_response,
+              nps_score: body.nps_score ?? null,
+              comment: body.comment ?? null,
+              created_at: '2026-03-11T00:00:00Z',
+            },
+          };
+        }
+
+        if (url === '/beta/redeem') {
+          const body = data as { invite_code: string };
+          return {
+            data: {
+              user_id: 'user-123',
+              beta_onboarding_enabled: true,
+              enrolled: true,
+              invite_required: false,
+              cohort_name: 'remote_caregivers',
+              invite_code: body.invite_code.toUpperCase(),
+              enrolled_at: '2026-03-11T00:00:00Z',
+            },
+          };
+        }
+
         throw new Error(`Unhandled POST ${url}`);
       }),
       get: jest.fn(async (url: string, config: Record<string, unknown> = {}) => {
@@ -128,6 +163,44 @@ describe('api client auth wiring', () => {
           };
         }
 
+        if (url.startsWith('/feedback/sessions/')) {
+          if (url.endsWith('/missing')) {
+            const error = new Error('Not found') as Error & {
+              isAxiosError: boolean;
+              response: { status: number };
+            };
+            error.isAxiosError = true;
+            error.response = { status: 404 };
+            throw error;
+          }
+
+          return {
+            data: {
+              id: 'feedback-1',
+              session_id: 'session-1',
+              user_id: 'user-123',
+              useful_response: 'useful',
+              nps_score: 8,
+              comment: null,
+              created_at: '2026-03-11T00:00:00Z',
+            },
+          };
+        }
+
+        if (url === '/beta/status') {
+          return {
+            data: {
+              user_id: 'user-123',
+              beta_onboarding_enabled: true,
+              enrolled: false,
+              invite_required: true,
+              cohort_name: null,
+              invite_code: null,
+              enrolled_at: null,
+            },
+          };
+        }
+
         throw new Error(`Unhandled GET ${url}`);
       }),
       put: jest.fn(async (url: string, data?: unknown, config: Record<string, unknown> = {}) => {
@@ -144,11 +217,14 @@ describe('api client auth wiring', () => {
       }),
     };
 
-    const axiosModule = require('axios');
+    const axiosModule = jest.requireMock('axios');
     axiosModule.default.create.mockReturnValue(httpInstance);
     axiosModule.create.mockReturnValue(httpInstance);
+    axiosModule.default.isAxiosError = (error: unknown) =>
+      Boolean((error as { isAxiosError?: boolean })?.isAxiosError);
+    axiosModule.isAxiosError = axiosModule.default.isAxiosError;
 
-    client = require('../src/api/client');
+    client = jest.requireActual('../src/api/client') as typeof import('../src/api/client');
     client.resetAuthSession();
   });
 
@@ -192,5 +268,50 @@ describe('api client auth wiring', () => {
       { user_id: 'user-123' },
       { user_id: 'user-456' },
     ]);
+  });
+
+  it('submits feedback with a bearer token for the active user', async () => {
+    await client.submitScanFeedback('user-123', {
+      session_id: 'session-1',
+      useful_response: 'useful',
+      nps_score: 8,
+    });
+
+    expect(requestLog.map((entry) => entry.url)).toEqual(['/auth/token', '/feedback']);
+
+    const feedbackRequest = requestLog.find((entry) => entry.url === '/feedback');
+    expect(feedbackRequest?.config.headers).toMatchObject({
+      Authorization: 'Bearer access-user-123',
+    });
+  });
+
+  it('returns null when feedback is not found for a session', async () => {
+    const feedback = await client.getFeedbackForSession('missing', 'user-123');
+    expect(feedback).toBeNull();
+  });
+
+  it('requests beta status with a bearer token for the active user', async () => {
+    const status = await client.getBetaStatus('user-123');
+
+    expect(status.invite_required).toBe(true);
+    expect(requestLog.map((entry) => entry.url)).toEqual(['/auth/token', '/beta/status']);
+
+    const statusRequest = requestLog.find((entry) => entry.url === '/beta/status');
+    expect(statusRequest?.config.headers).toMatchObject({
+      Authorization: 'Bearer access-user-123',
+    });
+  });
+
+  it('redeems a beta invite with a bearer token for the active user', async () => {
+    const status = await client.redeemBetaInvite('user-123', { invite_code: 'closed50' });
+
+    expect(status.enrolled).toBe(true);
+    expect(status.invite_code).toBe('CLOSED50');
+    expect(requestLog.map((entry) => entry.url)).toEqual(['/auth/token', '/beta/redeem']);
+
+    const redeemRequest = requestLog.find((entry) => entry.url === '/beta/redeem');
+    expect(redeemRequest?.config.headers).toMatchObject({
+      Authorization: 'Bearer access-user-123',
+    });
   });
 });

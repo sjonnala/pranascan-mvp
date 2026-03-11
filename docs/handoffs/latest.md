@@ -1,98 +1,284 @@
-# PranaScan Handoff — 2026-03-11 02:15 UTC
+# PranaScan Handoff — 2026-03-11 04:44 UTC
 
-## 1. Branch + Commit
+## 1. Branch + Status
 
 - **Branch:** `main`
-- **Last clean commit:** `bdad07d` — `d26: D26 bug bash complete`
-- **Remote:** pushed to `origin/main`
-- **Uncommitted work-in-progress:** None. Working tree clean.
+- **Status:** local `main` includes the post-merge D26/D28 state plus the latest Week 4 onboarding and delivery follow-up work
+- **Latest shipped milestone in repo:** D30 go/no-go KPI review artifact
+- **Latest milestone commits:**
+  - `4f7eafc` — D26 bug bash hardening
+  - `8d26fee` — D28 feedback instrumentation
+  - `a04051b` — s2-14 WhatsApp delivery channel scaffold
+  - `3b09d8d` — D27 closed beta onboarding flow
+  - `(current change set)` — D30 go/no-go KPI review artifact
 
 ---
 
-## 2. Week 4 Status
+## 2. Current Delivered Scope
 
-| Day | Milestone | Status | Commit |
-|---|---|---|---|
-| D5 | Skin tone calibration (Fitzpatrick 1–6) | ✅ Done | `03cd4c6` |
-| D26 | Bug bash — edge case hardening | ✅ Done | `bdad07d` |
-| D28 | Feedback instrumentation (NPS + "useful?") | ⏳ Next | — |
-| D27 | Beta onboarding flow + invite system | ⏳ Pending | — |
-| D22 | Bench test accuracy harness | ⏳ Pending | — |
-| D24 | Skin-tone audit tooling | ⏳ Pending | — |
-| D30 | Go/no-go KPI template | ⏳ Pending | — |
+### Core product path
 
----
+- Consent, revoke, deletion request, and audit logging
+- Authenticated mobile-to-backend scan flow
+- Real mobile camera capture and real mobile voice capture
+- On-device-derived inputs for backend wellness processing
+- rPPG v1, voice DSP v1, baseline + multi-metric 15% deviation engine
+- ABHA adapter scaffold, Telegram + WhatsApp delivery scaffolds, weekly vitality report, beta onboarding, and OpenClaw background agent
 
-## 3. D26 — What Was Built
+### Week 4 milestones complete in code
 
-**Backend `quality_gate.py`** — severity tiers:
-- `QualityFlagSeverity` (WARNING / ERROR)
-- Borderline zones: lighting `(0.33, 0.40]` → `borderline_lighting`; face `(0.68, 0.80]` → `partial_occlusion_suspected`; audio `(10.0, 15.0]` → `borderline_noise`
-- Motion: still hard gate (no warning zone)
-- `QualityGateResult` gains `warnings: list[str]`
+- **D25** security hardening
+- **D26** bug bash hardening
+- **D27** closed beta onboarding
+- **D28** feedback instrumentation
+- **D30** go/no-go KPI review artifact
+- **S2-14 follow-up** WhatsApp delivery scaffold
 
-**Backend `voice_processor.py`** — accented vowel accommodation:
-- `F0_HIGH_HZ` 400 → 450 Hz (higher-pitched Indian voices)
-- `voiced_fraction` in `[0.35, 0.50)` + `snr_db ≥ 20.0` → proceeds with `accented_vowel_accommodated` flag
+### Still pending / externally gated
 
-**Mobile `frameAnalyzer.ts`** — two new functions:
-- `detectOcclusionHint(base64, lightingScore) → OcclusionHint` — glasses / beard detection from JPEG size/luminance mismatch
-- `isTransientMotion(motionScores, threshold) → boolean` — recoverable if motion confined to outer 25% of scan
+- **D22** bench validation vs reference devices
+- **D24** empirical skin-tone audit evidence
+- WhatsApp sender/template approval and production credentials
+- ABHA sandbox / production credential follow-up
 
 ---
 
-## 4. Validation (2026-03-11)
+## 3. D30 — Go/No-Go KPI Review
 
+### Docs artifact
+
+- **`docs/d30-go-no-go-kpi-template.md`**
+  - captures the current recommendation for rollout
+  - maps Week 4 KPIs to actual repo evidence or missing external evidence
+  - identifies the precise blockers still preventing a broader rollout
+  - provides a meeting agenda and decision log for the Week 4 review
+
+### Current rollout decision in repo
+
+- **Current recommendation:** no-go for broader rollout today
+- **Why:** D22 bench evidence, D24 audit evidence, and external credentials are still missing
+- **What is possible now:** invitation-only beta once deployment and invite provisioning are ready
+
+---
+
+## 4. D27 — Closed Beta Onboarding
+
+### Backend
+
+- **`backend/app/models/beta.py`**
+  - added `beta_invites` and `beta_enrollments` persistence models
+- **`backend/app/schemas/beta.py`**
+  - added invite redeem and beta status contracts
+- **`backend/app/routers/beta.py`**
+  - added authenticated endpoints:
+    - `GET /api/v1/beta/status`
+    - `POST /api/v1/beta/redeem`
+  - validates active, unexpired, under-capacity invite codes
+  - keeps redeem idempotent for already-enrolled users
+- **`backend/app/main.py`**
+  - registers the beta router and beta models
+  - seeds a reusable invite automatically when `BETA_SEED_INVITE_CODE` is configured for local/dev use
+- **`backend/migrations/versions/006_add_beta_onboarding.py`**
+  - adds invite and enrollment tables
+
+### Mobile
+
+- **`mobile/src/screens/BetaOnboardingScreen.tsx`**
+  - added pre-consent closed-beta gate with invite-code entry
+- **`mobile/src/hooks/useBetaAccess.ts`**
+  - resolves the pseudonymous user ID, fetches beta status, caches it locally, and redeems invite codes
+- **`mobile/src/api/client.ts`**
+  - added beta status and redeem endpoints with auth bootstrapping
+- **`mobile/App.tsx`**
+  - app flow now starts with beta onboarding and advances to consent only after enrollment or when gating is disabled
+- **`mobile/src/utils/identity.ts`**
+  - shared user ID creation/persistence for onboarding and consent flows
+
+### Tests added / updated
+
+- **`backend/tests/test_beta.py`**
+  - disabled-feature status
+  - successful enrollment
+  - invalid, expired, and exhausted invite handling
+  - idempotent redeem for already-enrolled users
+- **`mobile/__tests__/BetaOnboardingScreen.test.tsx`**
+  - render, disabled state, redeem flow, auto-advance, loading, and error cases
+- **`mobile/__tests__/apiClient.test.ts`**
+  - beta status + redeem auth wiring
+
+### Remaining constraints for this slice
+
+- closed-beta invites still need to be provisioned in the target environment
+- the current implementation supports invite-code gating, not full cohort-management tooling
+- production rollout will still need recipient communications and recruitment operations outside the repo
+
+---
+
+## 5. WhatsApp Delivery Scaffold — What Was Built
+
+### Backend
+
+- **`backend/app/config.py`**
+  - added feature-flagged WhatsApp Cloud API settings:
+    - `whatsapp_enabled`
+    - `whatsapp_access_token`
+    - `whatsapp_phone_number_id`
+    - `whatsapp_recipient_phone`
+    - `whatsapp_api_version`
+- **`backend/app/services/delivery_service.py`**
+  - added `_whatsapp_configured()` guard
+  - added `_send_whatsapp()` Cloud API transport
+  - alerts now attempt WhatsApp delivery after log/webhook/Telegram when enabled
+  - weekly vitality reports now attempt WhatsApp delivery when enabled
+  - long WhatsApp report payloads are truncated safely to the text-message limit
+
+### Tests added / updated
+
+- **`backend/tests/test_delivery.py`**
+  - alert delivery through WhatsApp
+  - WhatsApp failure swallowing for alerts
+  - feature-flag skip behavior
+  - report delivery through WhatsApp
+  - report truncation for WhatsApp text limits
+
+### What remains outside this code slice
+
+- real Meta Business credentials
+- approved sender and any template/policy requirements for production rollout
+- destination/recipient preference management beyond the single configured recipient
+
+---
+
+## 6. D28 — What Was Built
+
+### Backend
+
+- **`backend/app/models/feedback.py`**
+  - new `scan_feedback` model with one record per completed scan session
+- **`backend/app/schemas/feedback.py`**
+  - request/response contracts for feedback submit + fetch
+- **`backend/app/routers/feedback.py`**
+  - authenticated feedback endpoints:
+    - `POST /api/v1/feedback`
+    - `GET /api/v1/feedback/sessions/{session_id}`
+  - enforces ownership, completed-session requirement, and one-feedback-per-session
+- **`backend/migrations/versions/005_add_scan_feedback.py`**
+  - migration for the feedback table
+- **`backend/app/main.py` and `backend/migrations/env.py`**
+  - router/model registration
+
+### Mobile
+
+- **`mobile/src/screens/ResultsScreen.tsx`**
+  - added post-scan feedback UI:
+    - usefulness prompt
+    - optional NPS score
+    - optional note
+  - existing feedback now renders as a thank-you summary instead of re-showing the form
+- **`mobile/src/api/client.ts`**
+  - feedback submit + per-session retrieval
+  - results retrieval can re-bootstrap auth with `userId` when needed
+- **`mobile/src/types/index.ts`**
+  - feedback types and aligned quality-flag unions
+- **`mobile/App.tsx`**
+  - passes `userId` into `ResultsScreen`
+
+### Tests added / updated
+
+- **`backend/tests/test_feedback.py`**
+  - create, duplicate rejection, completed-session enforcement, owner-only access, auth requirement
+- **`mobile/__tests__/ResultsScreen.test.tsx`**
+  - feedback prompt render, submission flow, existing-feedback thank-you state
+- **`mobile/__tests__/apiClient.test.ts`**
+  - feedback auth + `404 -> null` retrieval behavior
+
+---
+
+## 7. D26 — Hardening That Landed Before D28
+
+- `quality_gate.py`
+  - warning tiers for borderline lighting, face confidence, and audio SNR
+  - motion remains a hard gate
+- `voice_processor.py`
+  - accented vowel accommodation for high-SNR, low-voiced-fraction samples
+- `frameAnalyzer.ts`
+  - occlusion hint detection and transient motion handling
+- tests expanded in backend + mobile to cover these edge cases
+
+---
+
+## 8. Validation
+
+```text
+python3 -m ruff check .                         → All checks passed!
+DEBUG=false PYTHONPATH=backend python3 -m pytest -q
+                                                → 252 passed, 186 warnings in 6.84s
+cd mobile && npx eslint src/ --ext .ts,.tsx    → clean
+cd mobile && npx tsc --noEmit                  → clean
+cd mobile && npm test -- --watchAll=false      → 151 passed, 11 suites
 ```
-python3 -m ruff check .          → All checks passed!
-PYTHONPATH=backend pytest -q     → 230 passed in 9.19s
-npx eslint src/ --ext .ts,.tsx   → (clean)
-npx tsc --noEmit                 → (clean)
-npm test -- --watchAll=false     → 131 passed, 9 suites, 0 failures
-```
+
+### Notes
+
+- The local shell still has `DEBUG=release`, so Python validation is run with `DEBUG=false`.
+- Mobile Jest still prints the existing `act(...)` warning from `ConsentScreen.test.tsx` and now the new beta screen test path, but the suite passes.
+- Local comparison docs remain intentionally untracked:
+  - `docs/local-project-status.md`
+  - `docs/local-daily-status.md`
+  - `docs/design/`
 
 ---
 
-## 5. Pending Items — Week 4 (ordered)
+## 9. Recommended Next Slice
 
-| # | Item | Day | Notes |
-|---|---|---|---|
-| 1 | **D28 Feedback instrumentation** | D28 | In-app NPS (1–5 stars) + "Was this scan useful?" (Yes/No); backend model + API + mobile UI component |
-| 2 | **D27 Beta onboarding flow** | D27 | Invite code model, `/auth/redeem-invite` endpoint, mobile onboarding screen |
-| 3 | **D22 Bench test harness** | D22 | Accuracy comparison framework — rPPG HR vs reference oximeter; CSV import + stats output |
-| 4 | **D24 Skin-tone audit tooling** | D24 | Per-Fitzpatrick-type accuracy report from bench test data |
-| 5 | **D30 Go/no-go KPI template** | D30 | Exit checklist + KPI readout markdown doc |
-| 6 | **D21 Internal pilot** | D21 | Operational — 5–10 team members, 7 days |
-| 7 | **WhatsApp delivery** | — | TODO — deferred |
+### Next real work item
+
+**D22 accuracy bench test**
+
+Why this next:
+- D30 is now complete.
+- The remaining blockers are no longer repo scaffolding gaps.
+- D22 is the highest-value missing evidence for the rollout decision.
+
+Unblocking inputs needed:
+1. deployed/local build running on target devices
+2. reference devices for HR / HRV comparison
+3. participant/session plan
+4. place to store raw benchmark results and summary artifacts in the repo
 
 ---
 
-## 6. Resume Prompt
+## 10. Resume Prompt
 
-```
-Resume PranaScan Week 4 at /home/ubuntu/pranascan-mvp.
+```text
+Resume PranaScan on main after D27 closed beta onboarding and the D30 rollout-review artifact.
 
-Context:
-- Repo: main branch, last clean commit bdad07d (D26 bug bash complete).
-- All checks green: 230 backend tests, 131 mobile tests.
-- See docs/handoffs/latest.md for full Week 4 task list.
+Current state:
+- D26 bug bash hardening is complete.
+- D27 closed beta onboarding is complete.
+- D28 feedback instrumentation is complete.
+- D30 go/no-go KPI review artifact is complete.
+- WhatsApp delivery scaffold is complete behind feature flags.
+- Local comparison docs remain untracked and should stay local-only.
 
-Next task: D28 — Feedback instrumentation.
-  Backend:
-    - New model: ScanFeedback (id, session_id, user_id, usefulness: bool,
-      nps_score: 1–5, free_text: optional str ≤ 280 chars, created_at)
-    - Migration: 005_add_scan_feedback.py
-    - Schema: ScanFeedbackSubmit, ScanFeedbackResponse
-    - Router: POST /scans/sessions/{session_id}/feedback (auth required, once per session)
-    - Tests: test_feedback.py
-  Mobile:
-    - New component: FeedbackPrompt.tsx — "Was this scan useful?" Yes/No + 1–5 stars
-    - Shown on ScanResultScreen after results are displayed
-    - Calls POST /scans/sessions/{session_id}/feedback
-    - Test: __tests__/FeedbackPrompt.test.tsx
+Validation baseline:
+- ruff clean
+- backend pytest: 252 passed
+- mobile eslint clean
+- mobile tsc clean
+- mobile jest: 151 passed
 
-Rules:
-- Reconstruct state from git + docs/ before starting.
-- Run and paste raw output for all 5 validation commands before committing.
-- Update docs/handoffs/latest.md after each commit.
+User-side context:
+- external validation milestones will be handled later after local build/deploy
+- ABHA sandbox creds are pending
+- WhatsApp Business API credentials are not ready yet
+- ignore the global DEBUG env issue for now
+
+Recommended next slice:
+- D22 accuracy bench test once local build/deploy and reference devices are ready
+
+Execution style:
+- keep commits milestone-scoped, matching the existing repo history
+- update tracker + handoff in the same change set
+- do not stage local-only docs unless explicitly requested
 ```

@@ -264,6 +264,43 @@ describe('computeFaceConfidence', () => {
   });
 });
 
+// ─── D26 helpers ─────────────────────────────────────────────────────────────
+
+describe('detectOcclusionHint', () => {
+  it('returns null for missing or too-short frame data', () => {
+    expect(detectOcclusionHint('', 0.5)).toBeNull();
+    expect(detectOcclusionHint('A'.repeat(20), 0.5)).toBeNull();
+  });
+
+  it('flags glasses when the JPEG is much larger than expected for its luminance', () => {
+    expect(detectOcclusionHint('A'.repeat(10_000), 0.5)).toBe('glasses_suspected');
+  });
+
+  it('flags beard when lighting is low but the JPEG still has noticeable texture', () => {
+    expect(detectOcclusionHint('A'.repeat(4_000), 0.25)).toBe('beard_suspected');
+  });
+
+  it('returns null for a normal-size frame with no strong occlusion signal', () => {
+    expect(detectOcclusionHint('A'.repeat(6_000), 0.5)).toBeNull();
+  });
+});
+
+describe('isTransientMotion', () => {
+  it('returns false when there are too few frames to classify motion recovery', () => {
+    expect(isTransientMotion([0.96, 0.94, 0.97, 0.99, 0.98])).toBe(false);
+  });
+
+  it('returns true when instability is confined to the edges and the middle is stable', () => {
+    const motionScores = [0.70, 0.96, 0.97, 0.98, 0.99, 0.97, 0.96, 0.95, 0.80, 0.70];
+    expect(isTransientMotion(motionScores)).toBe(true);
+  });
+
+  it('returns false when unstable frames are spread through the middle of the scan', () => {
+    const motionScores = [0.97, 0.96, 0.70, 0.98, 0.60, 0.97, 0.70, 0.95, 0.96, 0.97];
+    expect(isTransientMotion(motionScores)).toBe(false);
+  });
+});
+
 // ─── No diagnostic language ───────────────────────────────────────────────────
 
 describe('no diagnostic language in frameAnalyzer', () => {

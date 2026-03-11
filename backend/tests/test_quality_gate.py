@@ -11,7 +11,6 @@ Covers:
   - No diagnostic language in rejection messages
 """
 
-
 from app.config import settings
 from app.schemas.scan import ScanResultSubmit
 from app.services.quality_gate import (
@@ -113,7 +112,6 @@ def test_motion_just_below_threshold_rejects_without_warning():
     result = run_quality_gate(_make({"motion_score": 0.94}))
     assert result.passed is False
     assert "motion_detected" in result.flags
-    # Must NOT appear in warnings — it's always an error
     assert "motion_detected" not in result.warnings
 
 
@@ -217,6 +215,7 @@ def test_warning_and_error_together_rejects():
     assert result.passed is False
     assert "borderline_lighting" in result.flags
     assert "motion_detected" in result.flags
+    assert result.warnings == ["borderline_lighting"]
 
 
 # ---------------------------------------------------------------------------
@@ -234,13 +233,12 @@ def test_warnings_field_is_subset_of_flags():
     """Every warning flag must also appear in the full flags list."""
     borderline_face = _in_warning(settings.min_face_confidence, _FACE_WARNING_DELTA)
     result = run_quality_gate(_make({"face_confidence": borderline_face}))
-    for w in result.warnings:
-        assert w in result.flags
+    for warning in result.warnings:
+        assert warning in result.flags
 
 
 def test_existing_payload_flags_preserved():
     """Flags already in the payload must not be dropped."""
-    # Use an allowed flag value (schema validates flag names)
     result = run_quality_gate(_make({"flags": ["partial_scan"]}))
     assert "partial_scan" in result.flags
 

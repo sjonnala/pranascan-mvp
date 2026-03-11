@@ -10,7 +10,7 @@ from app.config import settings
 from app.database import Base
 
 # Import all models so Alembic sees them
-from app.models import abha, audit, consent, scan  # noqa: F401
+from app.models import abha, audit, beta, consent, feedback, scan  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
