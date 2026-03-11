@@ -5,7 +5,9 @@ import math
 import numpy as np
 
 from app.services.voice_processor import (
+    MIN_VOICED_FRACTION_ACCOMMODATED,
     SAMPLE_RATE,
+    SNR_THRESHOLD_FOR_ACCOMMODATION_DB,
     VoiceResult,
     build_audio_samples,
     process_audio,
@@ -147,3 +149,84 @@ def test_no_diagnostic_language_in_voice_flags():
     for flag in result.flags:
         for word in forbidden:
             assert word not in flag.lower(), f"Diagnostic word '{word}' in flag '{flag}'"
+
+
+# ---------------------------------------------------------------------------
+# D26: Accented vowel accommodation
+# ---------------------------------------------------------------------------
+
+
+def _partial_voiced_high_snr(
+    voiced_fraction: float = 0.40,
+    freq_hz: float = 220.0,
+    duration_s: float = 5.0,
+) -> list[float]:
+    """
+    Synthetic recording where only `voiced_fraction` of frames are voiced
+    but the voiced segment has high SNR (pure sine, no added noise).
+    Remaining frames are silence (amplitude = 0).
+    """
+    total_samples = int(SAMPLE_RATE * duration_s)
+    voiced_samples = int(total_samples * voiced_fraction)
+    t = np.arange(voiced_samples) / float(SAMPLE_RATE)
+    voiced_part = list(0.8 * np.sin(2.0 * math.pi * freq_hz * t))
+    silence_part = [0.0] * (total_samples - voiced_samples)
+    return voiced_part + silence_part
+
+
+def test_accented_vowel_accommodated_when_voiced_fraction_low_snr_high():
+    """
+    voiced_fraction in [MIN_VOICED_FRACTION_ACCOMMODATED, 0.50) + high SNR
+    → processor proceeds; 'accented_vowel_accommodated' flag added.
+    """
+    samples = _partial_voiced_high_snr(voiced_fraction=0.40)
+    result = process_audio(samples)
+    # The accommodation should trigger
+    assert "accented_vowel_accommodated" in result.flags, (
+        f"Expected accented_vowel_accommodated flag. Got flags: {result.flags}, "
+        f"voiced_fraction={result.voiced_fraction:.2f}"
+    )
+
+
+def test_accented_vowel_insufficient_voiced_fraction_with_low_snr_rejected():
+    """
+    voiced_fraction in accommodation zone but SNR < threshold → NOT accommodated.
+    The 'insufficient_voiced_content' flag should fire instead.
+    """
+    # Add noise to reduce SNR below threshold
+    total = int(SAMPLE_RATE * 5.0)
+    voiced = int(total * 0.40)
+    t = np.arange(voiced) / float(SAMPLE_RATE)
+    voiced_part = np.array(0.3 * np.sin(2.0 * math.pi * 220.0 * t))
+    # High-amplitude noise throughout to tank SNR
+    noise = np.random.default_rng(42).uniform(-0.3, 0.3, total)
+    combined = list(voiced_part) + [0.0] * (total - voiced)
+    noisy = [a + b for a, b in zip(combined, noise, strict=False)]
+    result = process_audio(noisy)
+    assert "accented_vowel_accommodated" not in result.flags
+
+
+def test_standard_voiced_fraction_not_flagged_as_accented():
+    """
+    Full 5s voiced sine (voiced_fraction ≥ 0.80) should NOT get
+    accented_vowel_accommodated flag.
+    """
+    result = process_audio(_pure_sine())
+    assert "accented_vowel_accommodated" not in result.flags
+
+
+def test_accented_vowel_too_low_voiced_fraction_still_rejected():
+    """
+    voiced_fraction < MIN_VOICED_FRACTION_ACCOMMODATED → always rejected,
+    even at high SNR.
+    """
+    samples = _partial_voiced_high_snr(voiced_fraction=0.20)
+    result = process_audio(samples)
+    assert result.jitter_pct is None
+    assert result.shimmer_pct is None
+
+
+def test_accommodation_constants_are_sensible():
+    """Accommodation constants must be within expected engineering bounds."""
+    assert 0.30 <= MIN_VOICED_FRACTION_ACCOMMODATED < 0.50
+    assert 15.0 <= SNR_THRESHOLD_FOR_ACCOMMODATION_DB <= 30.0

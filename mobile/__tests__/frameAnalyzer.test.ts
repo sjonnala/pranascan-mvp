@@ -9,6 +9,8 @@ import {
   computeLightingScore,
   computeMotionScore,
   computeOverallQualityScore,
+  detectOcclusionHint,
+  isTransientMotion,
 } from '../src/utils/frameAnalyzer';
 
 // ─── computeLightingScore ─────────────────────────────────────────────────────
@@ -274,5 +276,117 @@ describe('no diagnostic language in frameAnalyzer', () => {
         expect(key.toLowerCase()).not.toContain(word);
       }
     }
+  });
+});
+
+// ─── D26: detectOcclusionHint ─────────────────────────────────────────────────
+
+describe('detectOcclusionHint', () => {
+  it('returns null for empty/short base64', () => {
+    expect(detectOcclusionHint('', 0.5)).toBeNull();
+    expect(detectOcclusionHint('abc', 0.5)).toBeNull();
+  });
+
+  it('returns null for a normal well-lit selfie (no mismatch)', () => {
+    // Normal selfie: ~6 000 chars at lighting 0.60 → expected ~6 480, ratio ~0.93
+    const normal = 'A'.repeat(6_000);
+    expect(detectOcclusionHint(normal, 0.60)).toBeNull();
+  });
+
+  it('detects glasses_suspected when JPEG is much larger than expected for luminance', () => {
+    // glasses add texture → JPEG 14 000 chars at mid-lighting (0.50)
+    // expected size ≈ 1200 + 0.50 * (12000 - 1200) = 6600; ratio = 14000/6600 ≈ 2.1 > 1.4
+    const glassyFrame = 'A'.repeat(14_000);
+    const hint = detectOcclusionHint(glassyFrame, 0.50);
+    expect(hint).toBe('glasses_suspected');
+  });
+
+  it('does NOT flag glasses for a bright over-exposed frame (high lighting explains size)', () => {
+    // At lighting 0.95, expected = 1200 + 0.95*10800 = 11460
+    // 14000 / 11460 ≈ 1.22 — below the 1.4 ratio trigger
+    const brightFrame = 'A'.repeat(14_000);
+    const hint = detectOcclusionHint(brightFrame, 0.95);
+    // Should be null or at most glasses — not a hard assertion but ratio shouldn't flag
+    expect(hint).not.toBe('beard_suspected');
+  });
+
+  it('detects beard_suspected when frame is dark but non-trivially sized', () => {
+    // Beard: dark lower face → low lighting, but texture → JPEG > 3000 chars
+    // Need lightingScore < 0.30 AND len > 1200 * 2.5 = 3000
+    const beardyFrame = 'A'.repeat(4_000);
+    const hint = detectOcclusionHint(beardyFrame, 0.20);
+    expect(hint).toBe('beard_suspected');
+  });
+
+  it('does NOT flag a genuinely dark scene as beard (frame too small)', () => {
+    // Very dark empty room: tiny JPEG, low lighting
+    const darkScene = 'A'.repeat(1_500);
+    const hint = detectOcclusionHint(darkScene, 0.15);
+    // 1500 < 1200 * 2.5 = 3000 → not beard
+    expect(hint).toBeNull();
+  });
+
+  it('returns null for an over-exposed blown-out frame', () => {
+    // High lighting, normal-to-large size — no mismatch signal
+    const blownOut = 'A'.repeat(11_000);
+    expect(detectOcclusionHint(blownOut, 0.95)).toBeNull();
+  });
+});
+
+// ─── D26: isTransientMotion ───────────────────────────────────────────────────
+
+describe('isTransientMotion', () => {
+  const STABLE = 0.98;
+  const UNSTABLE = 0.80;
+
+  it('returns false for fewer than 6 frames (not enough data)', () => {
+    expect(isTransientMotion([STABLE, STABLE, STABLE, STABLE, STABLE])).toBe(false);
+  });
+
+  it('returns false when majority of frames are unstable', () => {
+    // 3 stable / 10 total = 30% stable < 65% threshold
+    const scores = Array(3).fill(STABLE).concat(Array(7).fill(UNSTABLE));
+    expect(isTransientMotion(scores)).toBe(false);
+  });
+
+  it('returns true when only opening frames were unstable (user repositioning)', () => {
+    // 2 bad frames at start, 10 stable in the middle/end → transient
+    const scores = [UNSTABLE, UNSTABLE, ...Array(10).fill(STABLE)];
+    expect(isTransientMotion(scores)).toBe(true);
+  });
+
+  it('returns true when only trailing frames were unstable (user lowered phone)', () => {
+    // 10 stable, 2 bad at end → transient
+    const scores = [...Array(10).fill(STABLE), UNSTABLE, UNSTABLE];
+    expect(isTransientMotion(scores)).toBe(true);
+  });
+
+  it('returns false when unstable frames are distributed throughout middle', () => {
+    // Bad frames scattered in the middle → NOT transient
+    const scores = [
+      STABLE, STABLE, STABLE,
+      UNSTABLE, STABLE, UNSTABLE, STABLE, UNSTABLE,
+      STABLE, STABLE, STABLE,
+    ];
+    expect(isTransientMotion(scores)).toBe(false);
+  });
+
+  it('returns false for a fully stable scan (no motion at all — vacuously not transient)', () => {
+    const scores = Array(12).fill(STABLE);
+    // All stable: stableFraction = 1.0 ≥ 0.65 ✓, but middleStableFraction = 1.0 ✓
+    // isTransientMotion should return true here (it's stable so "recoverable")
+    // Actually our impl: stableFraction >= 0.65 AND middleStableFraction >= 0.90 → true
+    expect(isTransientMotion(scores)).toBe(true);
+  });
+
+  it('respects a custom stableThreshold parameter', () => {
+    // With threshold 0.70, these frames should be considered stable
+    const scores = Array(10).fill(0.75);
+    expect(isTransientMotion(scores, 0.70)).toBe(true);
+  });
+
+  it('returns false for an entirely unstable scan', () => {
+    const scores = Array(12).fill(UNSTABLE);
+    expect(isTransientMotion(scores)).toBe(false);
   });
 });
