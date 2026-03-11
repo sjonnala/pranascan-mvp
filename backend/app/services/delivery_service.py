@@ -5,6 +5,7 @@ Delivery channels (all optional / feature-flagged via config):
   1. Structured log entry — always emitted.
   2. HTTP POST to ALERT_WEBHOOK_URL — if configured.
   3. Telegram Bot API — if TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID are configured.
+  4. WhatsApp Cloud API — if WHATSAPP_ENABLED and the required credentials are configured.
 
 Message copy never contains diagnostic language.
 Delivery failures are caught and logged — they must never block the scan response.
@@ -25,10 +26,27 @@ ALERT_MESSAGE = (
 )
 
 _TELEGRAM_API_BASE = "https://api.telegram.org/bot{token}/sendMessage"
+_WHATSAPP_API_BASE = "https://graph.facebook.com/{version}/{phone_number_id}/messages"
+_WHATSAPP_TEXT_LIMIT = 4096
 
 
 def _telegram_configured() -> bool:
     return bool(settings.telegram_bot_token and settings.telegram_chat_id)
+
+
+def _whatsapp_configured() -> bool:
+    return (
+        settings.whatsapp_enabled is True
+        and bool(settings.whatsapp_access_token)
+        and bool(settings.whatsapp_phone_number_id)
+        and bool(settings.whatsapp_recipient_phone)
+    )
+
+
+def _truncate_plain_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
 
 
 async def _send_telegram(text: str) -> None:
@@ -53,6 +71,40 @@ async def _send_telegram(text: str) -> None:
     )
 
 
+async def _send_whatsapp(text: str) -> None:
+    """
+    POST a plain-text WhatsApp message to the configured recipient.
+
+    Raises on HTTP/network error (caller decides whether to swallow).
+    Only called when whatsapp_enabled and the required credentials are set.
+    """
+    url = _WHATSAPP_API_BASE.format(
+        version=settings.whatsapp_api_version,
+        phone_number_id=settings.whatsapp_phone_number_id,
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": settings.whatsapp_recipient_phone,
+        "type": "text",
+        "text": {
+            "preview_url": False,
+            "body": _truncate_plain_text(text, _WHATSAPP_TEXT_LIMIT),
+        },
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.whatsapp_access_token}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        response = await client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+    logger.info(
+        "whatsapp_message_sent",
+        extra={"to": settings.whatsapp_recipient_phone, "text_length": len(payload["text"]["body"])},
+    )
+
+
 async def deliver_alert(user_id: str, alert_type: str) -> None:
     """
     Deliver a wellness trend alert for a user.
@@ -61,6 +113,7 @@ async def deliver_alert(user_id: str, alert_type: str) -> None:
       1. Structured log (always)
       2. Webhook POST (if ALERT_WEBHOOK_URL configured)
       3. Telegram (if TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID configured)
+      4. WhatsApp (if WHATSAPP_ENABLED and credentials configured)
 
     Parameters
     ----------
@@ -116,6 +169,21 @@ async def deliver_alert(user_id: str, alert_type: str) -> None:
                 extra={"error": str(exc), "user_id": user_id},
             )
 
+    # 4. WhatsApp
+    if _whatsapp_configured():
+        whatsapp_text = (
+            "PranaScan Wellness Alert\n\n"
+            f"{ALERT_MESSAGE}\n\n"
+            "This is an automated wellness reminder, not a medical diagnosis."
+        )
+        try:
+            await _send_whatsapp(whatsapp_text)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "wellness_alert_whatsapp_failed",
+                extra={"error": str(exc), "user_id": user_id},
+            )
+
 
 async def deliver_report(user_id: str, summary_text: str) -> None:
     """
@@ -124,6 +192,7 @@ async def deliver_report(user_id: str, summary_text: str) -> None:
     Currently supports:
       1. Structured log (always)
       2. Telegram (if configured)
+      3. WhatsApp (if configured)
 
     Parameters
     ----------
@@ -137,14 +206,21 @@ async def deliver_report(user_id: str, summary_text: str) -> None:
 
     if _telegram_configured():
         # Telegram message length limit: 4096 chars. Truncate gracefully if needed.
-        truncated = summary_text
-        if len(summary_text) > 4000:
-            truncated = summary_text[:3997] + "…"
+        truncated = _truncate_plain_text(summary_text, 4000)
         telegram_text = f"<pre>{truncated}</pre>"
         try:
             await _send_telegram(telegram_text)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "vitality_report_telegram_failed",
+                extra={"error": str(exc), "user_id": user_id},
+            )
+
+    if _whatsapp_configured():
+        try:
+            await _send_whatsapp(summary_text)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "vitality_report_whatsapp_failed",
                 extra={"error": str(exc), "user_id": user_id},
             )

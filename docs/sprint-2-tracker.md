@@ -1,5 +1,5 @@
 # PranaScan — Sprint 2 Tracker
-_Last updated: 2026-03-11 03:10 UTC_
+_Last updated: 2026-03-11 04:26 UTC_
 
 ## Sprint Goal
 Replace simulated health processing with real v1 pipelines, enforce backend auth, and ship ABHA-ready integration scaffolding.
@@ -30,6 +30,7 @@ March 23 – April 5, 2026 (planned) | Execution accelerated — all sprint stor
 | Milestone | Sprint Plan Day | Commit |
 |---|---|---|
 | Alert cooldown (48h) + delivery stub (log + webhook) | D19 | `5495dc2` |
+| WhatsApp delivery scaffold (feature-flagged) | D19 follow-up | `(current change set)` |
 | Vascular age heuristic v1 | D11 | `dc95499` |
 | Anemia screening color CV v1 | D12 | `e5516f0` |
 | Weekly vitality report generate + store + deliver | D20 | `21886eb` |
@@ -40,7 +41,7 @@ March 23 – April 5, 2026 (planned) | Execution accelerated — all sprint stor
 ## Sprint Exit Criteria
 
 - [x] S2-01 through S2-06 complete
-- [x] CI green on main (`ruff` clean, `pytest` 241 passed, `eslint` clean, `tsc` clean, `jest` 142 passed)
+- [x] CI green on main (`ruff` clean, `pytest` 246 passed, `eslint` clean, `tsc` clean, `jest` 142 passed)
 - [x] Demo flow smoke-tested: Consent → Capture → Real processing → Result → Baseline/deviation status
 
 ---
@@ -50,7 +51,7 @@ March 23 – April 5, 2026 (planned) | Execution accelerated — all sprint stor
 ```
 python3 -m ruff check .          → All checks passed!
 DEBUG=false PYTHONPATH=backend python3 -m pytest -q
-                                 → 241 passed, 175 warnings in 7.89s
+                                 → 246 passed, 180 warnings in 5.72s
 npx eslint src/ --ext .ts,.tsx   → (clean, no output)
 npx tsc --noEmit                 → (clean, no output)
 npm test -- --watchAll=false     → 142 passed, 10 suites, 0 failures
@@ -62,11 +63,11 @@ npm test -- --watchAll=false     → 142 passed, 10 suites, 0 failures
 
 | # | Item | Priority | Notes |
 |---|---|---|---|
-| 1 | **WhatsApp delivery (Business API)** | 🔴 High | Telegram is done; WhatsApp still needs implementation + API approval |
+| 1 | Closed beta onboarding (D27) | 🔴 High | 50 users — onboarding / invite flow not started in code/docs |
 | 2 | Accuracy bench test (D22) | 🔴 High | 20-person controlled session vs finger-clip oximeter / Polar H10 |
 | 3 | Skin-tone calibration audit (D24) | 🔴 High | Fitzpatrick 5–6 empirical audit still not evidenced |
-| 4 | Closed beta onboarding (D27) | 🟡 Medium | 50 users — not started in code/docs |
-| 5 | Rollout review (D30) | 🟡 Medium | KPI readout and go/no-go review |
+| 4 | Rollout review (D30) | 🟡 Medium | KPI readout and go/no-go review |
+| 5 | WhatsApp production readiness | 🟡 Medium | Channel scaffold is done; credentials, approved sender/template flow, and real recipient wiring still pending |
 | 6 | ABHA production-readiness proof | 🟡 Medium | Sandbox adapter exists; production certification/workflow not evidenced |
 
 ---
@@ -81,9 +82,10 @@ npm test -- --watchAll=false     → 142 passed, 10 suites, 0 failures
 | `03cd4c6` | d5: Skin tone calibration (Fitzpatrick Types 1–6, ITA estimator, accuracy note) |
 | `4f7eafc` | d26: D26 bug bash complete — quality gate severity tiers, accented vowel, occlusion hint, transient motion (tests) |
 | `8d26fee` | d28: feedback instrumentation — post-scan usefulness prompt, NPS, backend event capture |
+| `(current change set)` | s2-14: WhatsApp delivery channel — feature-flagged alert + weekly report transport |
 
 ## Week 3 Status — COMPLETE ✅
 All code-deliverable Week 3 milestones done. D21 (internal pilot) is operational.
 
 ## Week 4 Readiness
-**In progress.** D25 security hardening, D26 bug-bash hardening, and D28 feedback instrumentation are complete; remaining Week 4 work is primarily validation, beta, rollout, and external credential-dependent delivery work.
+**In progress.** D25 security hardening, D26 bug-bash hardening, D28 feedback instrumentation, and WhatsApp delivery scaffolding are complete; remaining Week 4 work is primarily validation, beta, rollout, and external credential-dependent activation work.

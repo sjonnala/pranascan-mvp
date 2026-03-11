@@ -1,13 +1,14 @@
-# PranaScan Handoff — 2026-03-11 03:10 UTC
+# PranaScan Handoff — 2026-03-11 04:26 UTC
 
 ## 1. Branch + Status
 
 - **Branch:** `main`
-- **Status:** local `main` had D26/D28 ahead of `origin/main`; remote D26 handoff updates are now merged into this state
-- **Latest shipped milestone in code:** D28 feedback instrumentation
+- **Status:** local `main` includes the post-merge D26/D28 state plus the latest delivery-channel follow-up work
+- **Latest shipped milestone in code:** feature-flagged WhatsApp delivery scaffold
 - **Latest milestone commits:**
   - `4f7eafc` — D26 bug bash hardening
   - `8d26fee` — D28 feedback instrumentation
+  - `(current change set)` — s2-14 WhatsApp delivery channel scaffold
 
 ---
 
@@ -20,13 +21,14 @@
 - Real mobile camera capture and real mobile voice capture
 - On-device-derived inputs for backend wellness processing
 - rPPG v1, voice DSP v1, baseline + multi-metric 15% deviation engine
-- ABHA adapter scaffold, Telegram delivery, weekly vitality report, and OpenClaw background agent
+- ABHA adapter scaffold, Telegram + WhatsApp delivery scaffolds, weekly vitality report, and OpenClaw background agent
 
 ### Week 4 milestones complete in code
 
 - **D25** security hardening
 - **D26** bug bash hardening
 - **D28** feedback instrumentation
+- **S2-14 follow-up** WhatsApp delivery scaffold
 
 ### Still pending / externally gated
 
@@ -34,12 +36,47 @@
 - **D24** empirical skin-tone audit evidence
 - **D27** beta onboarding / rollout flow
 - **D30** go/no-go KPI review
-- WhatsApp Business API implementation and credentials
+- WhatsApp sender/template approval and production credentials
 - ABHA sandbox / production credential follow-up
 
 ---
 
-## 3. D28 — What Was Built
+## 3. WhatsApp Delivery Scaffold — What Was Built
+
+### Backend
+
+- **`backend/app/config.py`**
+  - added feature-flagged WhatsApp Cloud API settings:
+    - `whatsapp_enabled`
+    - `whatsapp_access_token`
+    - `whatsapp_phone_number_id`
+    - `whatsapp_recipient_phone`
+    - `whatsapp_api_version`
+- **`backend/app/services/delivery_service.py`**
+  - added `_whatsapp_configured()` guard
+  - added `_send_whatsapp()` Cloud API transport
+  - alerts now attempt WhatsApp delivery after log/webhook/Telegram when enabled
+  - weekly vitality reports now attempt WhatsApp delivery when enabled
+  - long WhatsApp report payloads are truncated safely to the text-message limit
+
+### Tests added / updated
+
+- **`backend/tests/test_delivery.py`**
+  - alert delivery through WhatsApp
+  - WhatsApp failure swallowing for alerts
+  - feature-flag skip behavior
+  - report delivery through WhatsApp
+  - report truncation for WhatsApp text limits
+
+### What remains outside this code slice
+
+- real Meta Business credentials
+- approved sender and any template/policy requirements for production rollout
+- destination/recipient preference management beyond the single configured recipient
+
+---
+
+## 4. D28 — What Was Built
 
 ### Backend
 
@@ -84,7 +121,7 @@
 
 ---
 
-## 4. D26 — Hardening That Landed Before D28
+## 5. D26 — Hardening That Landed Before D28
 
 - `quality_gate.py`
   - warning tiers for borderline lighting, face confidence, and audio SNR
@@ -97,12 +134,12 @@
 
 ---
 
-## 5. Validation
+## 6. Validation
 
 ```text
 python3 -m ruff check .                         → All checks passed!
 DEBUG=false PYTHONPATH=backend python3 -m pytest -q
-                                                → 241 passed, 175 warnings in 7.89s
+                                                → 246 passed, 180 warnings in 5.72s
 cd mobile && npx eslint src/ --ext .ts,.tsx    → clean
 cd mobile && npx tsc --noEmit                  → clean
 cd mobile && npm test -- --watchAll=false      → 142 passed, 10 suites
@@ -119,40 +156,41 @@ cd mobile && npm test -- --watchAll=false      → 142 passed, 10 suites
 
 ---
 
-## 6. Recommended Next Slice
+## 7. Recommended Next Slice
 
 ### Best next code-only milestone
 
-**WhatsApp delivery channel scaffold**
+**D27 beta onboarding flow**
 
 Why this next:
-- D22, D24, D27, and D30 all require external validation or rollout activity.
-- ABHA credential work is externally gated.
-- WhatsApp delivery is still an open product/channel gap that can be implemented behind config flags before production credentials are ready.
+- D22 and D24 remain externally validation-heavy.
+- D30 is mainly a rollout/readout artifact.
+- WhatsApp channel scaffolding is now done; the remaining WhatsApp work is credential/policy activation rather than core implementation.
+- D27 is the next meaningful code-deliverable user-facing slice.
 
 Suggested scope:
-1. add a feature-flagged WhatsApp transport in the delivery layer
-2. add config for token / sender / template identifiers
-3. reuse existing alert/report delivery entry points
-4. add mocked transport tests
+1. add invite or enrollment model for beta access
+2. add backend endpoints for redeem / validate onboarding state
+3. add a mobile onboarding gate or invite entry screen
+4. add tests for valid / invalid invite flows
 5. update `docs/sprint-2-tracker.md` and this handoff in the same change set
 
 ---
 
-## 7. Resume Prompt
+## 8. Resume Prompt
 
 ```text
-Resume PranaScan on main after D28 completion and merge-conflict resolution.
+Resume PranaScan on main after the WhatsApp delivery scaffold.
 
 Current state:
 - D26 bug bash hardening is complete.
 - D28 feedback instrumentation is complete.
-- Merge conflicts from origin/main have been resolved.
+- WhatsApp delivery scaffold is complete behind feature flags.
 - Local comparison docs remain untracked and should stay local-only.
 
 Validation baseline:
 - ruff clean
-- backend pytest: 241 passed
+- backend pytest: 246 passed
 - mobile eslint clean
 - mobile tsc clean
 - mobile jest: 142 passed
@@ -164,7 +202,7 @@ User-side context:
 - ignore the global DEBUG env issue for now
 
 Recommended next slice:
-- feature-flagged WhatsApp delivery channel scaffold
+- D27 beta onboarding flow
 
 Execution style:
 - keep commits milestone-scoped, matching the existing repo history

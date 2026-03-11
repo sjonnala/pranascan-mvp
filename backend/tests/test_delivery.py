@@ -139,7 +139,90 @@ async def test_deliver_alert_skips_telegram_when_not_configured():
 
 
 # ---------------------------------------------------------------------------
-# deliver_report — Telegram path
+# deliver_alert — WhatsApp path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_deliver_alert_sends_whatsapp_when_configured():
+    """deliver_alert sends a WhatsApp message when the feature flag and creds are set."""
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.post = AsyncMock(return_value=mock_response)
+
+    with (
+        patch("app.services.delivery_service.settings") as mock_settings,
+        patch("app.services.delivery_service.httpx.AsyncClient", return_value=mock_client),
+    ):
+        mock_settings.alert_webhook_url = None
+        mock_settings.telegram_bot_token = None
+        mock_settings.telegram_chat_id = None
+        mock_settings.whatsapp_enabled = True
+        mock_settings.whatsapp_access_token = "wa-token"
+        mock_settings.whatsapp_phone_number_id = "123456789"
+        mock_settings.whatsapp_recipient_phone = "15551234567"
+        mock_settings.whatsapp_api_version = "v20.0"
+        await deliver_alert("user-wa", "consider_lab_followup")
+
+    mock_client.post.assert_called_once()
+    url_called = mock_client.post.call_args[0][0]
+    assert "/v20.0/123456789/messages" in url_called
+    headers = mock_client.post.call_args[1]["headers"]
+    assert headers["Authorization"] == "Bearer wa-token"
+    payload = mock_client.post.call_args[1]["json"]
+    assert payload["messaging_product"] == "whatsapp"
+    assert payload["to"] == "15551234567"
+    assert "wellness" in payload["text"]["body"].lower()
+
+
+@pytest.mark.asyncio
+async def test_deliver_alert_does_not_raise_on_whatsapp_failure():
+    """deliver_alert swallows WhatsApp errors so scans are never blocked."""
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.post = AsyncMock(side_effect=Exception("whatsapp unavailable"))
+
+    with (
+        patch("app.services.delivery_service.settings") as mock_settings,
+        patch("app.services.delivery_service.httpx.AsyncClient", return_value=mock_client),
+    ):
+        mock_settings.alert_webhook_url = None
+        mock_settings.telegram_bot_token = None
+        mock_settings.telegram_chat_id = None
+        mock_settings.whatsapp_enabled = True
+        mock_settings.whatsapp_access_token = "wa-token"
+        mock_settings.whatsapp_phone_number_id = "123456789"
+        mock_settings.whatsapp_recipient_phone = "15551234567"
+        mock_settings.whatsapp_api_version = "v20.0"
+        await deliver_alert("user-wa-fail", "consider_lab_followup")
+
+
+@pytest.mark.asyncio
+async def test_deliver_alert_skips_whatsapp_when_feature_disabled():
+    """deliver_alert does NOT attempt WhatsApp when the feature flag is off."""
+    with (
+        patch("app.services.delivery_service.settings") as mock_settings,
+        patch("app.services.delivery_service._send_whatsapp") as mock_whatsapp,
+    ):
+        mock_settings.alert_webhook_url = None
+        mock_settings.telegram_bot_token = None
+        mock_settings.telegram_chat_id = None
+        mock_settings.whatsapp_enabled = False
+        mock_settings.whatsapp_access_token = "wa-token"
+        mock_settings.whatsapp_phone_number_id = "123456789"
+        mock_settings.whatsapp_recipient_phone = "15551234567"
+        await deliver_alert("user-no-wa", "consider_lab_followup")
+
+    mock_whatsapp.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# deliver_report — Telegram / WhatsApp path
 # ---------------------------------------------------------------------------
 
 
@@ -162,6 +245,7 @@ async def test_deliver_report_sends_telegram_when_configured():
     ):
         mock_settings.telegram_bot_token = "123:FAKE_TOKEN"
         mock_settings.telegram_chat_id = "987654321"
+        mock_settings.whatsapp_enabled = False
         await deliver_report("user-report", summary)
 
     mock_client.post.assert_called_once()
@@ -189,6 +273,7 @@ async def test_deliver_report_truncates_long_summary():
     ):
         mock_settings.telegram_bot_token = "123:FAKE_TOKEN"
         mock_settings.telegram_chat_id = "987654321"
+        mock_settings.whatsapp_enabled = False
         await deliver_report("user-long", long_summary)
 
     payload = mock_client.post.call_args[1]["json"]
@@ -211,6 +296,7 @@ async def test_deliver_report_does_not_raise_on_telegram_failure():
     ):
         mock_settings.telegram_bot_token = "123:FAKE_TOKEN"
         mock_settings.telegram_chat_id = "987654321"
+        mock_settings.whatsapp_enabled = False
         await deliver_report("user-fail", "some summary")  # must not raise
 
 
@@ -223,6 +309,71 @@ async def test_deliver_report_skips_telegram_when_not_configured():
     ):
         mock_settings.telegram_bot_token = None
         mock_settings.telegram_chat_id = None
+        mock_settings.whatsapp_enabled = False
         await deliver_report("user-no-tg", "some summary")
 
     mock_tg.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_deliver_report_sends_whatsapp_when_configured():
+    """deliver_report sends the vitality summary to WhatsApp when configured."""
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.post = AsyncMock(return_value=mock_response)
+
+    summary = "PranaScan Weekly Wellness Summary\nHR: 72 bpm\n..."
+
+    with (
+        patch("app.services.delivery_service.settings") as mock_settings,
+        patch("app.services.delivery_service.httpx.AsyncClient", return_value=mock_client),
+    ):
+        mock_settings.telegram_bot_token = None
+        mock_settings.telegram_chat_id = None
+        mock_settings.whatsapp_enabled = True
+        mock_settings.whatsapp_access_token = "wa-token"
+        mock_settings.whatsapp_phone_number_id = "123456789"
+        mock_settings.whatsapp_recipient_phone = "15551234567"
+        mock_settings.whatsapp_api_version = "v20.0"
+        await deliver_report("user-report-wa", summary)
+
+    mock_client.post.assert_called_once()
+    payload = mock_client.post.call_args[1]["json"]
+    assert payload["messaging_product"] == "whatsapp"
+    assert payload["to"] == "15551234567"
+    assert summary[:20] in payload["text"]["body"]
+
+
+@pytest.mark.asyncio
+async def test_deliver_report_truncates_long_summary_for_whatsapp():
+    """deliver_report truncates long WhatsApp summaries to the Cloud API text limit."""
+    long_summary = "x" * 5000
+
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.post = AsyncMock(return_value=mock_response)
+
+    with (
+        patch("app.services.delivery_service.settings") as mock_settings,
+        patch("app.services.delivery_service.httpx.AsyncClient", return_value=mock_client),
+    ):
+        mock_settings.telegram_bot_token = None
+        mock_settings.telegram_chat_id = None
+        mock_settings.whatsapp_enabled = True
+        mock_settings.whatsapp_access_token = "wa-token"
+        mock_settings.whatsapp_phone_number_id = "123456789"
+        mock_settings.whatsapp_recipient_phone = "15551234567"
+        mock_settings.whatsapp_api_version = "v20.0"
+        await deliver_report("user-long-wa", long_summary)
+
+    payload = mock_client.post.call_args[1]["json"]
+    assert len(payload["text"]["body"]) <= 4096
+    assert payload["text"]["body"].endswith("…")
