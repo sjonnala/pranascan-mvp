@@ -113,6 +113,31 @@ async def test_complete_session_good_quality(client: AsyncClient, auth_headers: 
 
 
 @pytest.mark.asyncio
+async def test_complete_session_borderline_quality_proceeds_with_warning_flags(
+    client: AsyncClient, auth_headers: dict
+):
+    """Borderline lighting/face/audio should proceed and persist warning flags."""
+    await _grant_consent(client, auth_headers)
+    session_id = await _create_session(client, auth_headers)
+
+    resp = await client.put(
+        f"/api/v1/scans/sessions/{session_id}/complete",
+        json={
+            **GOOD_RESULT,
+            "lighting_score": 0.37,
+            "face_confidence": 0.75,
+            "audio_snr_db": 12.0,
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert "borderline_lighting" in data["flags"]
+    assert "partial_occlusion_suspected" in data["flags"]
+    assert "borderline_noise" in data["flags"]
+
+
+@pytest.mark.asyncio
 async def test_complete_session_edge_processed_vitals(client: AsyncClient, auth_headers: dict):
     """
     Edge-processing path: client submits pre-computed vitals WITHOUT frame_data.

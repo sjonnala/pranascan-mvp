@@ -38,6 +38,19 @@ def _silence(duration_s: float = 5.0) -> list[float]:
     return [0.0] * int(SAMPLE_RATE * duration_s)
 
 
+def _partially_voiced_sine(
+    voiced_duration_s: float = 2.0,
+    total_duration_s: float = 5.0,
+    freq_hz: float = 220.0,
+    amplitude: float = 0.8,
+    silence_level: float = 0.0,
+) -> list[float]:
+    """Generate a clip with voiced content followed by low-energy silence."""
+    voiced = _pure_sine(freq_hz=freq_hz, duration_s=voiced_duration_s, amplitude=amplitude)
+    silence = [silence_level] * int(SAMPLE_RATE * max(total_duration_s - voiced_duration_s, 0.0))
+    return voiced + silence
+
+
 # ---------------------------------------------------------------------------
 # Basic functionality
 # ---------------------------------------------------------------------------
@@ -112,6 +125,34 @@ def test_voiced_fraction_low_for_silence():
     """Silence recording should have low voiced fraction."""
     result = process_audio(_silence())
     assert result.voiced_fraction < 0.2
+
+
+def test_accented_vowel_accommodation_allows_high_snr_partial_voicing():
+    """High-SNR clips with 35–50% voiced content should still be processed."""
+    result = process_audio(_partially_voiced_sine(voiced_duration_s=2.0, amplitude=0.8))
+
+    assert 0.35 <= result.voiced_fraction < 0.5
+    assert result.snr_db is not None
+    assert result.snr_db >= 20.0
+    assert "accented_vowel_accommodated" in result.flags
+    assert "insufficient_voiced_content" not in result.flags
+    assert result.jitter_pct is not None
+    assert result.shimmer_pct is not None
+
+
+def test_partial_voicing_low_snr_still_returns_insufficient_voiced_content():
+    """Low-SNR partial voicing must not use the accented-vowel accommodation path."""
+    result = process_audio(
+        _partially_voiced_sine(voiced_duration_s=2.0, amplitude=0.02, silence_level=0.005)
+    )
+
+    assert 0.35 <= result.voiced_fraction < 0.5
+    assert result.snr_db is not None
+    assert result.snr_db < 20.0
+    assert "accented_vowel_accommodated" not in result.flags
+    assert "insufficient_voiced_content" in result.flags
+    assert result.jitter_pct is None
+    assert result.shimmer_pct is None
 
 
 # ---------------------------------------------------------------------------

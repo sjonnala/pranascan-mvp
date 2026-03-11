@@ -133,6 +133,7 @@ def process_audio(samples: Sequence[float]) -> VoiceResult:
     # is high (≥ 20 dB) the recording is clean enough to proceed with analysis.
     # -----------------------------------------------------------------------
     effective_min_voiced = MIN_VOICED_FRACTION
+    accommodated = False
     if (
         voiced_fraction < MIN_VOICED_FRACTION
         and voiced_fraction >= MIN_VOICED_FRACTION_ACCOMMODATED
@@ -140,9 +141,10 @@ def process_audio(samples: Sequence[float]) -> VoiceResult:
         and snr_db >= SNR_THRESHOLD_FOR_ACCOMMODATION_DB
     ):
         effective_min_voiced = MIN_VOICED_FRACTION_ACCOMMODATED
+        accommodated = True
         flags.append("accented_vowel_accommodated")
 
-    if voiced_fraction < MIN_VOICED_FRACTION:
+    if voiced_fraction < MIN_VOICED_FRACTION and not accommodated:
         flags.append("insufficient_voiced_content")
 
     # -----------------------------------------------------------------------

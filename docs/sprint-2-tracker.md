@@ -1,5 +1,5 @@
 # PranaScan — Sprint 2 Tracker
-_Last updated: 2026-03-10 18:54 UTC_
+_Last updated: 2026-03-11 02:29 UTC_
 
 ## Sprint Goal
 Replace simulated health processing with real v1 pipelines, enforce backend auth, and ship ABHA-ready integration scaffolding.
@@ -40,19 +40,20 @@ March 23 – April 5, 2026 (planned) | Execution accelerated — all sprint stor
 ## Sprint Exit Criteria
 
 - [x] S2-01 through S2-06 complete
-- [x] CI green on main (`ruff` clean, `pytest` 156 passed, `eslint` clean, `tsc` clean, `jest` 116 passed)
-- [ ] Demo flow smoke-tested: Consent → Capture → Real processing → Result → Baseline/deviation status _(pending)_
+- [x] CI green on main (`ruff` clean, `pytest` 212 passed, `eslint` clean, `tsc` clean, `jest` 123 passed)
+- [x] Demo flow smoke-tested: Consent → Capture → Real processing → Result → Baseline/deviation status
 
 ---
 
-## Validation Results (2026-03-10)
+## Validation Results (2026-03-11)
 
 ```
 python3 -m ruff check .          → All checks passed!
-PYTHONPATH=backend pytest -q     → 156 passed in 7.28s
+DEBUG=false PYTHONPATH=backend python3 -m pytest -q
+                                 → 212 passed in 4.91s
 npx eslint src/ --ext .ts,.tsx   → (clean, no output)
 npx tsc --noEmit                 → (clean, no output)
-npm test -- --watchAll=false     → 116 passed, 9 suites, 0 failures
+npm test -- --watchAll=false     → 123 passed, 9 suites, 0 failures
 ```
 
 ---
@@ -61,18 +62,17 @@ npm test -- --watchAll=false     → 116 passed, 9 suites, 0 failures
 
 | # | Item | Priority | Notes |
 |---|---|---|---|
-| 1 | **Telegram delivery channel** | 🔴 High | delivery_service.py has webhook stub only; wire Telegram Bot API (feature-flagged) |
-| 2 | OpenClaw background agent / daemon | 🔴 High | PRD agentic daemon — not yet implemented |
-| 3 | E2E demo flow smoke test + docs | 🟡 Medium | Sprint exit criteria gap |
-| 4 | WhatsApp delivery (Business API) | 🟡 Medium | Telegram first; WhatsApp needs API approval |
-| 5 | Accuracy bench test (D22) | 🟡 Medium | 20-person controlled session vs finger-clip oximeter |
-| 6 | Skin-tone calibration audit (D24) | 🟡 Medium | Fitzpatrick 5–6 accuracy audit |
-| 7 | Closed beta onboarding (D27) | 🟡 Medium | 50 users — not started |
-| 8 | Feedback instrumentation (D28) | 🟡 Medium | In-app NPS + "Was this useful?" |
+| 1 | **WhatsApp delivery (Business API)** | 🔴 High | Telegram is done; WhatsApp still needs implementation + API approval |
+| 2 | Accuracy bench test (D22) | 🔴 High | 20-person controlled session vs finger-clip oximeter / Polar H10 |
+| 3 | Skin-tone calibration audit (D24) | 🔴 High | Fitzpatrick 5–6 empirical audit still not evidenced |
+| 4 | Closed beta onboarding (D27) | 🟡 Medium | 50 users — not started in code/docs |
+| 5 | Feedback instrumentation (D28) | 🟡 Medium | In-app usefulness prompt + NPS loop |
+| 6 | Rollout review (D30) | 🟡 Medium | KPI readout and go/no-go review |
+| 7 | ABHA production-readiness proof | 🟡 Medium | Sandbox adapter exists; production certification/workflow not evidenced |
 
 ---
 
-## Session Work Log (2026-03-10)
+## Session Work Log (2026-03-10 / 2026-03-11)
 
 | Commit | Item |
 |---|---|
@@ -80,9 +80,10 @@ npm test -- --watchAll=false     → 116 passed, 9 suites, 0 failures
 | `d7f091c` | s3-01: OpenClaw background agent (agent_runner + HTTP trigger + CLI) |
 | `2fe076a` | s3-02: E2E demo flow smoke test (Consent→Capture→Alert→Report→Agent) |
 | `03cd4c6` | d5: Skin tone calibration (Fitzpatrick Types 1–6, ITA estimator, accuracy note) |
+| `(current change set)` | d26: bug bash complete — quality gate severity tiers, accented vowel, occlusion hint, transient motion (tests) |
 
 ## Week 3 Status — COMPLETE ✅
 All code-deliverable Week 3 milestones done. D21 (internal pilot) is operational.
 
 ## Week 4 Readiness
-**Ready to start.** See `docs/handoffs/latest.md` for ordered task list.
+**In progress.** D25 security hardening and D26 bug-bash hardening are complete; remaining Week 4 work is primarily validation, beta, and feedback instrumentation.

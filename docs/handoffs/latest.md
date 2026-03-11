@@ -1,84 +1,121 @@
-# PranaScan Handoff — 2026-03-10 21:01 UTC
-_Saved due to token rate limit_
+# PranaScan Handoff — 2026-03-11 02:29 UTC
 
-## 1. Branch + Commit
+## 1. Branch + Status
 
 - **Branch:** `main`
-- **Last commit:** `4d641d2` — `d26-wip: quality gate severity tiers, accented vowel accommodation, occlusion hint + transient motion detection (tests pending)`
-- **Status:** WIP — committed but tests not yet written
-- **Remote:** NOT YET PUSHED (push on resume)
+- **Base commit before this change set:** `b54c622`
+- **Current milestone:** D26 bug bash hardening is complete in the working tree and validated locally
+- **Push state:** not pushed from this session yet
 
 ---
 
-## 2. D26 Bug Bash — IN PROGRESS
+## 2. What Was Completed
 
-### What's done (committed, not pushed)
+### D26 bug-bash hardening
 
-**`backend/app/services/quality_gate.py`** — rewritten:
-- `QualityFlagSeverity` enum (WARNING / ERROR)
-- Borderline zones: lighting `(0.33, 0.40]` → `borderline_lighting` warning; face `(0.68, 0.80]` → `partial_occlusion_suspected` warning; audio SNR `(10.0, 15.0]` → `borderline_noise` warning
-- Motion: still hard gate (no warning zone — by design)
-- `QualityGateResult` gains `warnings: list[str]` field
-- Hard failures only reject; warnings allow scan to proceed with flag
+**`backend/app/services/quality_gate.py`**
+- Warning/error severity tiers are active
+- Borderline lighting, face confidence, and audio SNR now proceed with warnings
+- Motion remains a hard gate
 
-**`backend/app/services/voice_processor.py`** — accented vowel accommodation:
-- `F0_HIGH_HZ` extended 400 → 450 Hz (higher-pitched Indian voices)
-- New constants: `MIN_VOICED_FRACTION_ACCOMMODATED = 0.35`, `SNR_THRESHOLD_FOR_ACCOMMODATION_DB = 20.0`
-- If `voiced_fraction` in `[0.35, 0.50)` AND `snr_db >= 20.0` → proceed with `accented_vowel_accommodated` flag
+**`backend/app/services/voice_processor.py`**
+- Accented-vowel accommodation now behaves correctly for high-SNR partial voicing
+- `accented_vowel_accommodated` no longer ships alongside `insufficient_voiced_content` on the successful accommodation path
 
-**`mobile/src/utils/frameAnalyzer.ts`** — two new functions:
-- `detectOcclusionHint(base64, lightingScore) → OcclusionHint` — glasses (size/luminance ratio > 1.4x) or beard (dark but textured)
-- `isTransientMotion(motionScores, threshold) → boolean` — recoverable if unstable frames are in outer 25% + ≥65% overall stable + middle ≥90% stable
+**`backend/app/schemas/scan.py`**
+- Allowed scan flags now include the new D26 warning/accommodation flags:
+  - `borderline_lighting`
+  - `partial_occlusion_suspected`
+  - `borderline_noise`
+  - `accented_vowel_accommodated`
 
-### What's NOT done yet (resume here)
+**`backend/tests/__init__.py`**
+- Added to force `tests.*` imports to resolve to the repo's backend test package instead of an unrelated installed third-party `tests` package
 
-1. **Write tests** (most important):
-   - `backend/tests/test_quality_gate.py` — severity tiers, borderline zones, partial_occlusion_suspected, warnings field
-   - `backend/tests/test_voice.py` additions — accented vowel accommodation (low voiced_fraction + high SNR → proceeds)
-   - `mobile/__tests__/frameAnalyzer.test.ts` additions — `detectOcclusionHint`, `isTransientMotion`
-2. **Run full suite** — confirm 204+ backend, 116+ mobile
-3. **Push to origin**
-4. **Update docs/sprint-2-tracker.md** — mark D26 done
+### New / updated tests
+
+- **`backend/tests/test_quality_gate.py`**
+  - warning-tier lighting, face, audio coverage
+  - hard-fail motion coverage
+  - mixed warning + error coverage
+- **`backend/tests/test_voice.py`**
+  - high-SNR accented-vowel accommodation path
+  - low-SNR partial-voicing rejection path
+- **`backend/tests/test_scan.py`**
+  - borderline quality passes through the scan API and persists warning flags
+- **`mobile/__tests__/frameAnalyzer.test.ts`**
+  - `detectOcclusionHint`
+  - `isTransientMotion`
 
 ---
 
 ## 3. Validation State
 
+```text
+python3 -m ruff check .                         → All checks passed!
+DEBUG=false PYTHONPATH=backend python3 -m pytest -q
+                                                → 212 passed, 167 warnings in 4.91s
+cd mobile && npx eslint src/ --ext .ts,.tsx    → clean
+cd mobile && npx tsc --noEmit                  → clean
+cd mobile && npm test -- --watchAll=false      → 123 passed, 9 suites
 ```
-python3 -m ruff check .          → All checks passed!
-PYTHONPATH=backend pytest -q     → 204 passed (tests for D26 changes NOT yet written)
-npx eslint src/ --ext .ts,.tsx   → ESLINT_CLEAN
-npx tsc --noEmit                 → TSC_CLEAN
-npm test -- --watchAll=false     → NOT YET RUN after mobile changes
-```
+
+### Notes
+
+- The local shell has `DEBUG=release`, which breaks `pydantic-settings` boolean parsing. Python validation was run with `DEBUG=false` to isolate repo behavior from shell state.
+- Mobile Jest still prints the existing `act(...)` warning from `ConsentScreen.test.tsx`, but the suite passes.
+- Backend pytest still emits pre-existing warnings from `pytest_asyncio` and SciPy signal internals; the suite passes.
 
 ---
 
-## 4. Resume Prompt
+## 4. Recommended Next Slice
 
-```
-Resume PranaScan D26 bug bash at /home/ubuntu/pranascan-mvp.
+### Best next code-deliverable milestone
 
-Context:
-- Branch: main, last commit 4d641d2 (d26-wip).
-- D26 implementation is committed but NOT pushed and tests are NOT written yet.
-- See docs/handoffs/latest.md §2 for exactly what was changed.
+**D28 — feedback instrumentation**
 
-Exact next steps:
-1. git push origin main
-2. Write tests:
-   - backend/tests/test_quality_gate.py — severity tiers (borderline lighting,
-     partial_occlusion_suspected, borderline_noise, warnings field, hard fails still reject)
-   - Add to backend/tests/test_voice.py — accented vowel accommodation
-     (voiced_fraction=0.40 + snr_db=25 → proceeds with accented_vowel_accommodated flag;
-      voiced_fraction=0.40 + snr_db=10 → still rejected)
-   - Add to mobile/__tests__/frameAnalyzer.test.ts — detectOcclusionHint + isTransientMotion
-3. Run ALL checks and paste raw output:
-   python3 -m ruff check .
-   PYTHONPATH=backend python3 -m pytest -q
-   cd mobile && npx eslint src/ --ext .ts,.tsx
-   cd mobile && npx tsc --noEmit
-   cd mobile && npm test -- --watchAll=false
-4. Commit as: "d26: D26 bug bash complete — quality gate severity tiers, accented vowel, occlusion hint, transient motion (tests)"
-5. Push and update docs/handoffs/latest.md + docs/sprint-2-tracker.md
+Why this next:
+- It is fully code-deliverable inside the repo.
+- It improves Week 4 readiness without needing external participants or bench hardware.
+- D22 and D24 require empirical validation sessions outside the repo, so they are harder to complete as pure coding work.
+
+### Suggested next steps
+
+1. Add in-app post-scan feedback capture on mobile:
+   - `Was this scan useful?`
+   - optional short free-text note
+   - optional NPS-style rating
+2. Add backend storage + API for scan feedback events
+3. Add tests for feedback submission and retrieval
+4. Update tracker + handoff
+5. Commit in the same style, e.g.:
+   - `d28: feedback instrumentation — post-scan usefulness prompt, NPS, backend event capture`
+
+---
+
+## 5. Resume Prompt
+
+```text
+Resume PranaScan on main after D26 completion.
+
+Current state:
+- D26 bug bash hardening is complete and locally validated.
+- Latest completed working-tree milestone includes:
+  - quality-gate warning/error tiers
+  - accented-vowel accommodation fix
+  - occlusion/transient-motion tests
+  - backend test-package import fix
+- Validation:
+  - ruff clean
+  - backend pytest: 212 passed
+  - mobile eslint/tsc clean
+  - mobile jest: 123 passed
+
+Recommended next slice:
+- D28 feedback instrumentation
+
+Execution style:
+- Keep commits milestone-scoped, matching the existing repo style.
+- Update docs/sprint-2-tracker.md and docs/handoffs/latest.md in the same change set.
+- Do not bundle unrelated cleanup into the next milestone.
 ```

@@ -76,9 +76,13 @@ class ScanResultSubmit(BaseModel):
     def validate_flags(cls, v: list[str]) -> list[str]:
         allowed = {
             "low_lighting",
+            "borderline_lighting",
             "motion_detected",
             "face_not_detected",
+            "partial_occlusion_suspected",
             "high_noise",
+            "borderline_noise",
+            "accented_vowel_accommodated",
             "partial_scan",
         }
         for flag in v:
