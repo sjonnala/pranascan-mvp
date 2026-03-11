@@ -1,5 +1,5 @@
 # PranaScan — Sprint 2 Tracker
-_Last updated: 2026-03-11 04:40 UTC_
+_Last updated: 2026-03-11 04:44 UTC_
 
 ## Sprint Goal
 Replace simulated health processing with real v1 pipelines, enforce backend auth, and ship ABHA-ready integration scaffolding.
@@ -36,6 +36,7 @@ March 23 – April 5, 2026 (planned) | Execution accelerated — all sprint stor
 | Weekly vitality report generate + store + deliver | D20 | `21886eb` |
 | Security hardening (headers, rate limiting, DPDP checklist) | D25 | `f9eeb83` |
 | Closed beta onboarding (invite gate + enrollment flow) | D27 | `(current change set)` |
+| Go/no-go KPI review artifact | D30 | `(current change set)` |
 
 ---
 
@@ -52,7 +53,7 @@ March 23 – April 5, 2026 (planned) | Execution accelerated — all sprint stor
 ```
 python3 -m ruff check .          → All checks passed!
 DEBUG=false PYTHONPATH=backend python3 -m pytest -q
-                                 → 252 passed, 186 warnings in 7.11s
+                                 → 252 passed, 186 warnings in 6.84s
 npx eslint src/ --ext .ts,.tsx   → (clean, no output)
 npx tsc --noEmit                 → (clean, no output)
 npm test -- --watchAll=false     → 151 passed, 11 suites, 0 failures
@@ -66,9 +67,8 @@ npm test -- --watchAll=false     → 151 passed, 11 suites, 0 failures
 |---|---|---|---|
 | 1 | Accuracy bench test (D22) | 🔴 High | 20-person controlled session vs finger-clip oximeter / Polar H10 |
 | 2 | Skin-tone calibration audit (D24) | 🔴 High | Fitzpatrick 5–6 empirical audit still not evidenced |
-| 3 | Rollout review (D30) | 🟡 Medium | KPI readout and go/no-go review |
-| 4 | WhatsApp production readiness | 🟡 Medium | Channel scaffold is done; credentials, approved sender/template flow, and real recipient wiring still pending |
-| 5 | ABHA production-readiness proof | 🟡 Medium | Sandbox adapter exists; production certification/workflow not evidenced |
+| 3 | WhatsApp production readiness | 🟡 Medium | Channel scaffold is done; credentials, approved sender/template flow, and real recipient wiring still pending |
+| 4 | ABHA production-readiness proof | 🟡 Medium | Sandbox adapter exists; production certification/workflow not evidenced |
 
 ---
 
@@ -83,10 +83,11 @@ npm test -- --watchAll=false     → 151 passed, 11 suites, 0 failures
 | `4f7eafc` | d26: D26 bug bash complete — quality gate severity tiers, accented vowel, occlusion hint, transient motion (tests) |
 | `8d26fee` | d28: feedback instrumentation — post-scan usefulness prompt, NPS, backend event capture |
 | `a04051b` | s2-14: WhatsApp delivery channel — feature-flagged alert + weekly report transport |
-| `(current change set)` | d27: closed beta onboarding — invite gate, enrollment status, mobile beta screen |
+| `3b09d8d` | d27: closed beta onboarding — invite gate, enrollment status, mobile beta screen |
+| `(current change set)` | d30: go/no-go KPI review — rollout evidence map and blocker checklist |
 
 ## Week 3 Status — COMPLETE ✅
 All code-deliverable Week 3 milestones done. D21 (internal pilot) is operational.
 
 ## Week 4 Readiness
-**In progress.** D25 security hardening, D26 bug-bash hardening, D27 closed beta onboarding, D28 feedback instrumentation, and WhatsApp delivery scaffolding are complete; remaining Week 4 work is primarily validation, rollout review, and external credential-dependent activation work.
+**In progress.** D25 security hardening, D26 bug-bash hardening, D27 closed beta onboarding, D28 feedback instrumentation, WhatsApp delivery scaffolding, and the D30 rollout review artifact are complete; remaining Week 4 work is now primarily external validation and credential-dependent activation work.

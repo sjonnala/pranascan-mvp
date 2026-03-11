@@ -1,15 +1,16 @@
-# PranaScan Handoff — 2026-03-11 04:40 UTC
+# PranaScan Handoff — 2026-03-11 04:44 UTC
 
 ## 1. Branch + Status
 
 - **Branch:** `main`
 - **Status:** local `main` includes the post-merge D26/D28 state plus the latest Week 4 onboarding and delivery follow-up work
-- **Latest shipped milestone in code:** D27 closed beta onboarding flow
+- **Latest shipped milestone in repo:** D30 go/no-go KPI review artifact
 - **Latest milestone commits:**
   - `4f7eafc` — D26 bug bash hardening
   - `8d26fee` — D28 feedback instrumentation
   - `a04051b` — s2-14 WhatsApp delivery channel scaffold
-  - `(current change set)` — D27 closed beta onboarding flow
+  - `3b09d8d` — D27 closed beta onboarding flow
+  - `(current change set)` — D30 go/no-go KPI review artifact
 
 ---
 
@@ -30,19 +31,37 @@
 - **D26** bug bash hardening
 - **D27** closed beta onboarding
 - **D28** feedback instrumentation
+- **D30** go/no-go KPI review artifact
 - **S2-14 follow-up** WhatsApp delivery scaffold
 
 ### Still pending / externally gated
 
 - **D22** bench validation vs reference devices
 - **D24** empirical skin-tone audit evidence
-- **D30** go/no-go KPI review
 - WhatsApp sender/template approval and production credentials
 - ABHA sandbox / production credential follow-up
 
 ---
 
-## 3. D27 — Closed Beta Onboarding
+## 3. D30 — Go/No-Go KPI Review
+
+### Docs artifact
+
+- **`docs/d30-go-no-go-kpi-template.md`**
+  - captures the current recommendation for rollout
+  - maps Week 4 KPIs to actual repo evidence or missing external evidence
+  - identifies the precise blockers still preventing a broader rollout
+  - provides a meeting agenda and decision log for the Week 4 review
+
+### Current rollout decision in repo
+
+- **Current recommendation:** no-go for broader rollout today
+- **Why:** D22 bench evidence, D24 audit evidence, and external credentials are still missing
+- **What is possible now:** invitation-only beta once deployment and invite provisioning are ready
+
+---
+
+## 4. D27 — Closed Beta Onboarding
 
 ### Backend
 
@@ -95,7 +114,7 @@
 
 ---
 
-## 4. WhatsApp Delivery Scaffold — What Was Built
+## 5. WhatsApp Delivery Scaffold — What Was Built
 
 ### Backend
 
@@ -130,7 +149,7 @@
 
 ---
 
-## 5. D28 — What Was Built
+## 6. D28 — What Was Built
 
 ### Backend
 
@@ -175,7 +194,7 @@
 
 ---
 
-## 6. D26 — Hardening That Landed Before D28
+## 7. D26 — Hardening That Landed Before D28
 
 - `quality_gate.py`
   - warning tiers for borderline lighting, face confidence, and audio SNR
@@ -188,12 +207,12 @@
 
 ---
 
-## 7. Validation
+## 8. Validation
 
 ```text
 python3 -m ruff check .                         → All checks passed!
 DEBUG=false PYTHONPATH=backend python3 -m pytest -q
-                                                → 252 passed, 186 warnings in 7.11s
+                                                → 252 passed, 186 warnings in 6.84s
 cd mobile && npx eslint src/ --ext .ts,.tsx    → clean
 cd mobile && npx tsc --noEmit                  → clean
 cd mobile && npm test -- --watchAll=false      → 151 passed, 11 suites
@@ -210,36 +229,35 @@ cd mobile && npm test -- --watchAll=false      → 151 passed, 11 suites
 
 ---
 
-## 8. Recommended Next Slice
+## 9. Recommended Next Slice
 
-### Best next code-only milestone
+### Next real work item
 
-**D30 go/no-go KPI template**
+**D22 accuracy bench test**
 
 Why this next:
-- D22 and D24 remain externally validation-heavy.
-- D27 is now complete.
-- WhatsApp channel scaffolding is now done; the remaining WhatsApp work is credential/policy activation rather than core implementation.
-- D30 is the next remaining repo-native artifact that can be completed without waiting on external bench/audit sessions.
+- D30 is now complete.
+- The remaining blockers are no longer repo scaffolding gaps.
+- D22 is the highest-value missing evidence for the rollout decision.
 
-Suggested scope:
-1. add a rollout KPI template under `docs/`
-2. capture Week 4 exit criteria, blockers, and current evidence sources
-3. map each KPI to the repo artifact or external validation source that proves it
-4. leave D22/D24 explicitly marked as pending evidence
-5. update `docs/sprint-2-tracker.md` and this handoff in the same change set
+Unblocking inputs needed:
+1. deployed/local build running on target devices
+2. reference devices for HR / HRV comparison
+3. participant/session plan
+4. place to store raw benchmark results and summary artifacts in the repo
 
 ---
 
-## 9. Resume Prompt
+## 10. Resume Prompt
 
 ```text
-Resume PranaScan on main after D27 closed beta onboarding.
+Resume PranaScan on main after D27 closed beta onboarding and the D30 rollout-review artifact.
 
 Current state:
 - D26 bug bash hardening is complete.
 - D27 closed beta onboarding is complete.
 - D28 feedback instrumentation is complete.
+- D30 go/no-go KPI review artifact is complete.
 - WhatsApp delivery scaffold is complete behind feature flags.
 - Local comparison docs remain untracked and should stay local-only.
 
@@ -257,7 +275,7 @@ User-side context:
 - ignore the global DEBUG env issue for now
 
 Recommended next slice:
-- D30 go/no-go KPI template
+- D22 accuracy bench test once local build/deploy and reference devices are ready
 
 Execution style:
 - keep commits milestone-scoped, matching the existing repo history
