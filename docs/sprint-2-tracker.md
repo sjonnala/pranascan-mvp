@@ -40,7 +40,7 @@ March 23 – April 5, 2026 (planned) | Execution accelerated — all sprint stor
 ## Sprint Exit Criteria
 
 - [x] S2-01 through S2-06 complete
-- [x] CI green on main (`ruff` clean, `pytest` 220 passed, `eslint` clean, `tsc` clean, `jest` 127 passed)
+- [x] CI green on main (`ruff` clean, `pytest` 241 passed, `eslint` clean, `tsc` clean, `jest` 142 passed)
 - [x] Demo flow smoke-tested: Consent → Capture → Real processing → Result → Baseline/deviation status
 
 ---
@@ -50,10 +50,10 @@ March 23 – April 5, 2026 (planned) | Execution accelerated — all sprint stor
 ```
 python3 -m ruff check .          → All checks passed!
 DEBUG=false PYTHONPATH=backend python3 -m pytest -q
-                                 → 220 passed in 4.82s
+                                 → 241 passed, 175 warnings in 7.89s
 npx eslint src/ --ext .ts,.tsx   → (clean, no output)
 npx tsc --noEmit                 → (clean, no output)
-npm test -- --watchAll=false     → 127 passed, 10 suites, 0 failures
+npm test -- --watchAll=false     → 142 passed, 10 suites, 0 failures
 ```
 
 ---
@@ -80,7 +80,7 @@ npm test -- --watchAll=false     → 127 passed, 10 suites, 0 failures
 | `2fe076a` | s3-02: E2E demo flow smoke test (Consent→Capture→Alert→Report→Agent) |
 | `03cd4c6` | d5: Skin tone calibration (Fitzpatrick Types 1–6, ITA estimator, accuracy note) |
 | `4f7eafc` | d26: D26 bug bash complete — quality gate severity tiers, accented vowel, occlusion hint, transient motion (tests) |
-| `(current change set)` | d28: feedback instrumentation — post-scan usefulness prompt, NPS, backend event capture |
+| `8d26fee` | d28: feedback instrumentation — post-scan usefulness prompt, NPS, backend event capture |
 
 ## Week 3 Status — COMPLETE ✅
 All code-deliverable Week 3 milestones done. D21 (internal pilot) is operational.

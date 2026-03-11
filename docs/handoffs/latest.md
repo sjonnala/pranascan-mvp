@@ -3,140 +3,171 @@
 ## 1. Branch + Status
 
 - **Branch:** `main`
-- **Base commit before this change set:** `4f7eafc`
-- **Current milestone:** D28 feedback instrumentation is complete in the working tree and validated locally
-- **Push state:** not pushed from this session yet
+- **Status:** local `main` had D26/D28 ahead of `origin/main`; remote D26 handoff updates are now merged into this state
+- **Latest shipped milestone in code:** D28 feedback instrumentation
+- **Latest milestone commits:**
+  - `4f7eafc` — D26 bug bash hardening
+  - `8d26fee` — D28 feedback instrumentation
 
 ---
 
-## 2. What Was Completed
+## 2. Current Delivered Scope
 
-### D28 feedback instrumentation
+### Core product path
 
-**Backend**
+- Consent, revoke, deletion request, and audit logging
+- Authenticated mobile-to-backend scan flow
+- Real mobile camera capture and real mobile voice capture
+- On-device-derived inputs for backend wellness processing
+- rPPG v1, voice DSP v1, baseline + multi-metric 15% deviation engine
+- ABHA adapter scaffold, Telegram delivery, weekly vitality report, and OpenClaw background agent
+
+### Week 4 milestones complete in code
+
+- **D25** security hardening
+- **D26** bug bash hardening
+- **D28** feedback instrumentation
+
+### Still pending / externally gated
+
+- **D22** bench validation vs reference devices
+- **D24** empirical skin-tone audit evidence
+- **D27** beta onboarding / rollout flow
+- **D30** go/no-go KPI review
+- WhatsApp Business API implementation and credentials
+- ABHA sandbox / production credential follow-up
+
+---
+
+## 3. D28 — What Was Built
+
+### Backend
 
 - **`backend/app/models/feedback.py`**
-  - added `scan_feedback` persistence model for one feedback record per completed session
+  - new `scan_feedback` model with one record per completed scan session
 - **`backend/app/schemas/feedback.py`**
-  - added request/response contracts for feedback submission and retrieval
+  - request/response contracts for feedback submit + fetch
 - **`backend/app/routers/feedback.py`**
-  - added authenticated feedback endpoints:
+  - authenticated feedback endpoints:
     - `POST /api/v1/feedback`
     - `GET /api/v1/feedback/sessions/{session_id}`
   - enforces ownership, completed-session requirement, and one-feedback-per-session
 - **`backend/migrations/versions/005_add_scan_feedback.py`**
-  - added Alembic migration for the new table
-- **`backend/app/main.py`**
-  - registered the feedback router and feedback model
-- **`backend/migrations/env.py`**
-  - registered feedback model import for Alembic metadata
+  - migration for the feedback table
+- **`backend/app/main.py` and `backend/migrations/env.py`**
+  - router/model registration
 
-**Mobile**
+### Mobile
 
-- **`mobile/src/types/index.ts`**
-  - added feedback types and aligned quality-flag unions with the current backend
-- **`mobile/src/api/client.ts`**
-  - added feedback submission + per-session feedback retrieval
-  - results fetch can now re-bootstrap auth with `userId` when needed
 - **`mobile/src/screens/ResultsScreen.tsx`**
-  - added a post-scan feedback card:
-    - `Was this scan useful?`
-    - optional 0–10 NPS prompt
-    - optional short note
-  - if feedback already exists for the session, the screen shows a thank-you summary instead of the form
+  - added post-scan feedback UI:
+    - usefulness prompt
+    - optional NPS score
+    - optional note
+  - existing feedback now renders as a thank-you summary instead of re-showing the form
+- **`mobile/src/api/client.ts`**
+  - feedback submit + per-session retrieval
+  - results retrieval can re-bootstrap auth with `userId` when needed
+- **`mobile/src/types/index.ts`**
+  - feedback types and aligned quality-flag unions
 - **`mobile/App.tsx`**
-  - passes `userId` into `ResultsScreen` so feedback APIs can auth reliably
+  - passes `userId` into `ResultsScreen`
 
-### New / updated tests
+### Tests added / updated
 
 - **`backend/tests/test_feedback.py`**
-  - create feedback
-  - blank comment normalization
-  - completed-session enforcement
-  - duplicate submission rejection
-  - per-session retrieval
-  - owner-only visibility
-  - auth requirement
+  - create, duplicate rejection, completed-session enforcement, owner-only access, auth requirement
 - **`mobile/__tests__/ResultsScreen.test.tsx`**
-  - feedback prompt render + submission flow
-  - existing-feedback thank-you state
+  - feedback prompt render, submission flow, existing-feedback thank-you state
 - **`mobile/__tests__/apiClient.test.ts`**
-  - feedback auth wiring
-  - 404 → `null` feedback retrieval behavior
+  - feedback auth + `404 -> null` retrieval behavior
 
 ---
 
-## 3. Validation State
+## 4. D26 — Hardening That Landed Before D28
+
+- `quality_gate.py`
+  - warning tiers for borderline lighting, face confidence, and audio SNR
+  - motion remains a hard gate
+- `voice_processor.py`
+  - accented vowel accommodation for high-SNR, low-voiced-fraction samples
+- `frameAnalyzer.ts`
+  - occlusion hint detection and transient motion handling
+- tests expanded in backend + mobile to cover these edge cases
+
+---
+
+## 5. Validation
 
 ```text
 python3 -m ruff check .                         → All checks passed!
 DEBUG=false PYTHONPATH=backend python3 -m pytest -q
-                                                → 220 passed, 175 warnings in 4.82s
+                                                → 241 passed, 175 warnings in 7.89s
 cd mobile && npx eslint src/ --ext .ts,.tsx    → clean
 cd mobile && npx tsc --noEmit                  → clean
-cd mobile && npm test -- --watchAll=false      → 127 passed, 10 suites
+cd mobile && npm test -- --watchAll=false      → 142 passed, 10 suites
 ```
 
 ### Notes
 
-- The local shell still has `DEBUG=release`, so Python validation was run with `DEBUG=false`.
-- Mobile Jest still prints the pre-existing `act(...)` warning from `ConsentScreen.test.tsx`, but the suite passes.
-- Backend pytest still emits pre-existing `pytest_asyncio` and SciPy signal warnings, but the suite passes.
+- The local shell still has `DEBUG=release`, so Python validation is run with `DEBUG=false`.
+- Mobile Jest still prints the existing `act(...)` warning from `ConsentScreen.test.tsx`, but the suite passes.
+- Local comparison docs remain intentionally untracked:
+  - `docs/local-project-status.md`
+  - `docs/local-daily-status.md`
+  - `docs/design/`
 
 ---
 
-## 4. Recommended Next Slice
+## 6. Recommended Next Slice
 
-### Best next code-deliverable milestone
+### Best next code-only milestone
 
 **WhatsApp delivery channel scaffold**
 
 Why this next:
-- D22, D24, D27, and D30 depend on external validation or rollout work.
-- ABHA sandbox credentials are still pending, so ABHA production-readiness is blocked externally.
-- WhatsApp delivery is still an open code gap and can be implemented in a feature-flagged way even before production credentials are final.
+- D22, D24, D27, and D30 all require external validation or rollout activity.
+- ABHA credential work is externally gated.
+- WhatsApp delivery is still an open product/channel gap that can be implemented behind config flags before production credentials are ready.
 
-### Suggested next steps
-
-1. Extend `delivery_service.py` with a WhatsApp Business API client behind config flags
-2. Add config fields for token / sender / destination template inputs
-3. Reuse the existing alert/report delivery entry points so Telegram and WhatsApp remain parallel channels
-4. Add tests that mock outbound WhatsApp delivery
-5. Update tracker + handoff
-6. Commit in the same style, e.g.:
-   - `d19-followup: WhatsApp delivery channel — feature-flagged alert + report transport`
+Suggested scope:
+1. add a feature-flagged WhatsApp transport in the delivery layer
+2. add config for token / sender / template identifiers
+3. reuse existing alert/report delivery entry points
+4. add mocked transport tests
+5. update `docs/sprint-2-tracker.md` and this handoff in the same change set
 
 ---
 
-## 5. Resume Prompt
+## 7. Resume Prompt
 
 ```text
-Resume PranaScan on main after D28 completion.
+Resume PranaScan on main after D28 completion and merge-conflict resolution.
 
 Current state:
-- D28 feedback instrumentation is complete and locally validated.
-- Latest completed working-tree milestone includes:
-  - backend scan_feedback model, router, schema, migration
-  - mobile results-screen feedback prompt
-  - per-session feedback retrieval
-  - feedback tests on backend and mobile
+- D26 bug bash hardening is complete.
+- D28 feedback instrumentation is complete.
+- Merge conflicts from origin/main have been resolved.
+- Local comparison docs remain untracked and should stay local-only.
 
-Validation:
+Validation baseline:
 - ruff clean
-- backend pytest: 220 passed
-- mobile eslint/tsc clean
-- mobile jest: 127 passed
+- backend pytest: 241 passed
+- mobile eslint clean
+- mobile tsc clean
+- mobile jest: 142 passed
 
-Current user-side blockers:
-- external validation milestones are deferred until local build/deploy is ready
-- ABHA sandbox creds are still pending
+User-side context:
+- external validation milestones will be handled later after local build/deploy
+- ABHA sandbox creds are pending
 - WhatsApp Business API credentials are not ready yet
+- ignore the global DEBUG env issue for now
 
 Recommended next slice:
 - feature-flagged WhatsApp delivery channel scaffold
 
 Execution style:
-- Keep commits milestone-scoped, matching the existing repo style.
-- Update docs/sprint-2-tracker.md and docs/handoffs/latest.md in the same change set.
-- Keep local comparison docs untracked.
+- keep commits milestone-scoped, matching the existing repo history
+- update tracker + handoff in the same change set
+- do not stage local-only docs unless explicitly requested
 ```
