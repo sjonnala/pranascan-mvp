@@ -26,13 +26,23 @@
 
 ## Quick Start
 
+### Recommended Local Setup
+
+Use Podman Desktop for PostgreSQL and run backend/mobile directly on your machine. See [docs/local-podman-postgres-setup.md](docs/local-podman-postgres-setup.md) for the full flow.
+
+### PostgreSQL via Podman
+
+```bash
+./scripts/start-postgres-podman.sh
+```
+
 ### Backend
 
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env          # fill in DB_URL, SECRET_KEY
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
@@ -41,15 +51,14 @@ uvicorn app.main:app --reload
 
 ```bash
 cd mobile
+cp .env.example .env
 npm install
 npx expo start
 ```
 
-### Docker (full stack)
+### Important Mobile Note
 
-```bash
-docker compose up --build
-```
+For a physical phone, set `EXPO_PUBLIC_API_URL` in `mobile/.env` to your machine LAN IP instead of `localhost`.
 
 ## API Overview
 
