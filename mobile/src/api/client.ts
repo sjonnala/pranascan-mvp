@@ -5,6 +5,8 @@
 
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import {
+  BetaInviteRedeemPayload,
+  BetaStatus,
   ConsentRecord,
   ConsentStatus,
   ScanFeedback,
@@ -89,6 +91,23 @@ async function ensureAuthSession(userId: string): Promise<void> {
 export function resetAuthSession(): void {
   authSession = null;
   authBootstrapPromise = null;
+}
+
+// ─── Closed beta onboarding ──────────────────────────────────────────────────
+
+export async function getBetaStatus(userId: string): Promise<BetaStatus> {
+  await ensureAuthSession(userId);
+  const { data } = await http.get<BetaStatus>('/beta/status');
+  return data;
+}
+
+export async function redeemBetaInvite(
+  userId: string,
+  payload: BetaInviteRedeemPayload
+): Promise<BetaStatus> {
+  await ensureAuthSession(userId);
+  const { data } = await http.post<BetaStatus>('/beta/redeem', payload);
+  return data;
 }
 
 // ─── Consent ─────────────────────────────────────────────────────────────────

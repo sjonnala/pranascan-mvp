@@ -6,18 +6,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
 import { grantConsent, getConsentStatus } from '../api/client';
 import { ConsentStatus } from '../types';
+import { getOrCreateUserId } from '../utils/identity';
 
 const CONSENT_KEY = '@pranascan:consent_status';
-const USER_ID_KEY = '@pranascan:user_id';
-
-function generateUserId(): string {
-  // Generate a pseudonymous UUID v4 client-side
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
 
 export interface UseConsentReturn {
   userId: string | null;
@@ -38,11 +29,7 @@ export function useConsent(): UseConsentReturn {
   useEffect(() => {
     (async () => {
       try {
-        let id = await AsyncStorage.getItem(USER_ID_KEY);
-        if (!id) {
-          id = generateUserId();
-          await AsyncStorage.setItem(USER_ID_KEY, id);
-        }
+        const id = await getOrCreateUserId();
         setUserId(id);
 
         // Try to fetch latest consent status from server

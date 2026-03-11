@@ -1,14 +1,15 @@
-# PranaScan Handoff — 2026-03-11 04:26 UTC
+# PranaScan Handoff — 2026-03-11 04:40 UTC
 
 ## 1. Branch + Status
 
 - **Branch:** `main`
-- **Status:** local `main` includes the post-merge D26/D28 state plus the latest delivery-channel follow-up work
-- **Latest shipped milestone in code:** feature-flagged WhatsApp delivery scaffold
+- **Status:** local `main` includes the post-merge D26/D28 state plus the latest Week 4 onboarding and delivery follow-up work
+- **Latest shipped milestone in code:** D27 closed beta onboarding flow
 - **Latest milestone commits:**
   - `4f7eafc` — D26 bug bash hardening
   - `8d26fee` — D28 feedback instrumentation
-  - `(current change set)` — s2-14 WhatsApp delivery channel scaffold
+  - `a04051b` — s2-14 WhatsApp delivery channel scaffold
+  - `(current change set)` — D27 closed beta onboarding flow
 
 ---
 
@@ -21,12 +22,13 @@
 - Real mobile camera capture and real mobile voice capture
 - On-device-derived inputs for backend wellness processing
 - rPPG v1, voice DSP v1, baseline + multi-metric 15% deviation engine
-- ABHA adapter scaffold, Telegram + WhatsApp delivery scaffolds, weekly vitality report, and OpenClaw background agent
+- ABHA adapter scaffold, Telegram + WhatsApp delivery scaffolds, weekly vitality report, beta onboarding, and OpenClaw background agent
 
 ### Week 4 milestones complete in code
 
 - **D25** security hardening
 - **D26** bug bash hardening
+- **D27** closed beta onboarding
 - **D28** feedback instrumentation
 - **S2-14 follow-up** WhatsApp delivery scaffold
 
@@ -34,14 +36,66 @@
 
 - **D22** bench validation vs reference devices
 - **D24** empirical skin-tone audit evidence
-- **D27** beta onboarding / rollout flow
 - **D30** go/no-go KPI review
 - WhatsApp sender/template approval and production credentials
 - ABHA sandbox / production credential follow-up
 
 ---
 
-## 3. WhatsApp Delivery Scaffold — What Was Built
+## 3. D27 — Closed Beta Onboarding
+
+### Backend
+
+- **`backend/app/models/beta.py`**
+  - added `beta_invites` and `beta_enrollments` persistence models
+- **`backend/app/schemas/beta.py`**
+  - added invite redeem and beta status contracts
+- **`backend/app/routers/beta.py`**
+  - added authenticated endpoints:
+    - `GET /api/v1/beta/status`
+    - `POST /api/v1/beta/redeem`
+  - validates active, unexpired, under-capacity invite codes
+  - keeps redeem idempotent for already-enrolled users
+- **`backend/app/main.py`**
+  - registers the beta router and beta models
+  - seeds a reusable invite automatically when `BETA_SEED_INVITE_CODE` is configured for local/dev use
+- **`backend/migrations/versions/006_add_beta_onboarding.py`**
+  - adds invite and enrollment tables
+
+### Mobile
+
+- **`mobile/src/screens/BetaOnboardingScreen.tsx`**
+  - added pre-consent closed-beta gate with invite-code entry
+- **`mobile/src/hooks/useBetaAccess.ts`**
+  - resolves the pseudonymous user ID, fetches beta status, caches it locally, and redeems invite codes
+- **`mobile/src/api/client.ts`**
+  - added beta status and redeem endpoints with auth bootstrapping
+- **`mobile/App.tsx`**
+  - app flow now starts with beta onboarding and advances to consent only after enrollment or when gating is disabled
+- **`mobile/src/utils/identity.ts`**
+  - shared user ID creation/persistence for onboarding and consent flows
+
+### Tests added / updated
+
+- **`backend/tests/test_beta.py`**
+  - disabled-feature status
+  - successful enrollment
+  - invalid, expired, and exhausted invite handling
+  - idempotent redeem for already-enrolled users
+- **`mobile/__tests__/BetaOnboardingScreen.test.tsx`**
+  - render, disabled state, redeem flow, auto-advance, loading, and error cases
+- **`mobile/__tests__/apiClient.test.ts`**
+  - beta status + redeem auth wiring
+
+### Remaining constraints for this slice
+
+- closed-beta invites still need to be provisioned in the target environment
+- the current implementation supports invite-code gating, not full cohort-management tooling
+- production rollout will still need recipient communications and recruitment operations outside the repo
+
+---
+
+## 4. WhatsApp Delivery Scaffold — What Was Built
 
 ### Backend
 
@@ -76,7 +130,7 @@
 
 ---
 
-## 4. D28 — What Was Built
+## 5. D28 — What Was Built
 
 ### Backend
 
@@ -121,7 +175,7 @@
 
 ---
 
-## 5. D26 — Hardening That Landed Before D28
+## 6. D26 — Hardening That Landed Before D28
 
 - `quality_gate.py`
   - warning tiers for borderline lighting, face confidence, and audio SNR
@@ -134,21 +188,21 @@
 
 ---
 
-## 6. Validation
+## 7. Validation
 
 ```text
 python3 -m ruff check .                         → All checks passed!
 DEBUG=false PYTHONPATH=backend python3 -m pytest -q
-                                                → 246 passed, 180 warnings in 5.72s
+                                                → 252 passed, 186 warnings in 7.11s
 cd mobile && npx eslint src/ --ext .ts,.tsx    → clean
 cd mobile && npx tsc --noEmit                  → clean
-cd mobile && npm test -- --watchAll=false      → 142 passed, 10 suites
+cd mobile && npm test -- --watchAll=false      → 151 passed, 11 suites
 ```
 
 ### Notes
 
 - The local shell still has `DEBUG=release`, so Python validation is run with `DEBUG=false`.
-- Mobile Jest still prints the existing `act(...)` warning from `ConsentScreen.test.tsx`, but the suite passes.
+- Mobile Jest still prints the existing `act(...)` warning from `ConsentScreen.test.tsx` and now the new beta screen test path, but the suite passes.
 - Local comparison docs remain intentionally untracked:
   - `docs/local-project-status.md`
   - `docs/local-daily-status.md`
@@ -156,44 +210,45 @@ cd mobile && npm test -- --watchAll=false      → 142 passed, 10 suites
 
 ---
 
-## 7. Recommended Next Slice
+## 8. Recommended Next Slice
 
 ### Best next code-only milestone
 
-**D27 beta onboarding flow**
+**D30 go/no-go KPI template**
 
 Why this next:
 - D22 and D24 remain externally validation-heavy.
-- D30 is mainly a rollout/readout artifact.
+- D27 is now complete.
 - WhatsApp channel scaffolding is now done; the remaining WhatsApp work is credential/policy activation rather than core implementation.
-- D27 is the next meaningful code-deliverable user-facing slice.
+- D30 is the next remaining repo-native artifact that can be completed without waiting on external bench/audit sessions.
 
 Suggested scope:
-1. add invite or enrollment model for beta access
-2. add backend endpoints for redeem / validate onboarding state
-3. add a mobile onboarding gate or invite entry screen
-4. add tests for valid / invalid invite flows
+1. add a rollout KPI template under `docs/`
+2. capture Week 4 exit criteria, blockers, and current evidence sources
+3. map each KPI to the repo artifact or external validation source that proves it
+4. leave D22/D24 explicitly marked as pending evidence
 5. update `docs/sprint-2-tracker.md` and this handoff in the same change set
 
 ---
 
-## 8. Resume Prompt
+## 9. Resume Prompt
 
 ```text
-Resume PranaScan on main after the WhatsApp delivery scaffold.
+Resume PranaScan on main after D27 closed beta onboarding.
 
 Current state:
 - D26 bug bash hardening is complete.
+- D27 closed beta onboarding is complete.
 - D28 feedback instrumentation is complete.
 - WhatsApp delivery scaffold is complete behind feature flags.
 - Local comparison docs remain untracked and should stay local-only.
 
 Validation baseline:
 - ruff clean
-- backend pytest: 246 passed
+- backend pytest: 252 passed
 - mobile eslint clean
 - mobile tsc clean
-- mobile jest: 142 passed
+- mobile jest: 151 passed
 
 User-side context:
 - external validation milestones will be handled later after local build/deploy
@@ -202,7 +257,7 @@ User-side context:
 - ignore the global DEBUG env issue for now
 
 Recommended next slice:
-- D27 beta onboarding flow
+- D30 go/no-go KPI template
 
 Execution style:
 - keep commits milestone-scoped, matching the existing repo history

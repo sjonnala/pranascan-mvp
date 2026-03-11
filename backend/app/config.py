@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     whatsapp_recipient_phone: str | None = None  # target phone in E.164 format
     whatsapp_api_version: str = "v20.0"  # Graph API version for Cloud API messaging
 
+    # Closed beta onboarding
+    beta_onboarding_enabled: bool = False  # invite-code gate for closed beta builds/deployments
+    beta_seed_invite_code: str | None = None  # optional bootstrap invite for local/dev beta testing
+    beta_seed_invite_cohort: str = "general_beta"
+    beta_seed_invite_max_redemptions: int = 50
+
     # Agent (background daemon)
     agent_secret_key: str | None = None  # if set, enables POST /internal/agent/run endpoint
 

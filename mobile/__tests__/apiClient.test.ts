@@ -119,6 +119,21 @@ describe('api client auth wiring', () => {
           };
         }
 
+        if (url === '/beta/redeem') {
+          const body = data as { invite_code: string };
+          return {
+            data: {
+              user_id: 'user-123',
+              beta_onboarding_enabled: true,
+              enrolled: true,
+              invite_required: false,
+              cohort_name: 'remote_caregivers',
+              invite_code: body.invite_code.toUpperCase(),
+              enrolled_at: '2026-03-11T00:00:00Z',
+            },
+          };
+        }
+
         throw new Error(`Unhandled POST ${url}`);
       }),
       get: jest.fn(async (url: string, config: Record<string, unknown> = {}) => {
@@ -168,6 +183,20 @@ describe('api client auth wiring', () => {
               nps_score: 8,
               comment: null,
               created_at: '2026-03-11T00:00:00Z',
+            },
+          };
+        }
+
+        if (url === '/beta/status') {
+          return {
+            data: {
+              user_id: 'user-123',
+              beta_onboarding_enabled: true,
+              enrolled: false,
+              invite_required: true,
+              cohort_name: null,
+              invite_code: null,
+              enrolled_at: null,
             },
           };
         }
@@ -259,5 +288,30 @@ describe('api client auth wiring', () => {
   it('returns null when feedback is not found for a session', async () => {
     const feedback = await client.getFeedbackForSession('missing', 'user-123');
     expect(feedback).toBeNull();
+  });
+
+  it('requests beta status with a bearer token for the active user', async () => {
+    const status = await client.getBetaStatus('user-123');
+
+    expect(status.invite_required).toBe(true);
+    expect(requestLog.map((entry) => entry.url)).toEqual(['/auth/token', '/beta/status']);
+
+    const statusRequest = requestLog.find((entry) => entry.url === '/beta/status');
+    expect(statusRequest?.config.headers).toMatchObject({
+      Authorization: 'Bearer access-user-123',
+    });
+  });
+
+  it('redeems a beta invite with a bearer token for the active user', async () => {
+    const status = await client.redeemBetaInvite('user-123', { invite_code: 'closed50' });
+
+    expect(status.enrolled).toBe(true);
+    expect(status.invite_code).toBe('CLOSED50');
+    expect(requestLog.map((entry) => entry.url)).toEqual(['/auth/token', '/beta/redeem']);
+
+    const redeemRequest = requestLog.find((entry) => entry.url === '/beta/redeem');
+    expect(redeemRequest?.config.headers).toMatchObject({
+      Authorization: 'Bearer access-user-123',
+    });
   });
 });

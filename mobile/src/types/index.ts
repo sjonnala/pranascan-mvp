@@ -27,6 +27,22 @@ export interface ConsentStatus {
   deletion_scheduled_at: string | null;
 }
 
+// ─── Beta onboarding ─────────────────────────────────────────────────────────
+
+export interface BetaStatus {
+  user_id: string;
+  beta_onboarding_enabled: boolean;
+  enrolled: boolean;
+  invite_required: boolean;
+  cohort_name: string | null;
+  invite_code: string | null;
+  enrolled_at: string | null;
+}
+
+export interface BetaInviteRedeemPayload {
+  invite_code: string;
+}
+
 // ─── Quality ──────────────────────────────────────────────────────────────────
 
 export interface QualityMetrics {
@@ -172,6 +188,7 @@ export interface ScanResultPayload {
 // ─── Navigation ──────────────────────────────────────────────────────────────
 
 export type RootStackParamList = {
+  Beta: undefined;
   Consent: undefined;
   Scan: { userId: string };
   Results: { sessionId: string; userId: string };

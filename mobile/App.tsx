@@ -7,20 +7,30 @@
 
 import React, { useState } from 'react';
 import { SafeAreaView, StatusBar, StyleSheet } from 'react-native';
+import { BetaOnboardingScreen } from './src/screens/BetaOnboardingScreen';
 import { ConsentScreen } from './src/screens/ConsentScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
 import { ResultsScreen } from './src/screens/ResultsScreen';
 
-type AppScreen = 'consent' | 'scan' | 'results';
+type AppScreen = 'beta' | 'consent' | 'scan' | 'results';
 
 export default function App() {
-  const [screen, setScreen] = useState<AppScreen>('consent');
+  const [screen, setScreen] = useState<AppScreen>('beta');
   const [userId, setUserId] = useState<string | null>(null);
   const [completedSessionId, setCompletedSessionId] = useState<string | null>(null);
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0f0f1a" />
+
+      {screen === 'beta' && (
+        <BetaOnboardingScreen
+          onEnrolled={(uid) => {
+            setUserId(uid);
+            setScreen('consent');
+          }}
+        />
+      )}
 
       {screen === 'consent' && (
         <ConsentScreen
