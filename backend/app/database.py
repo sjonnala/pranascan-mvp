@@ -41,7 +41,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def create_all_tables() -> None:
-    """Create all tables (used in tests and dev, not in production)."""
+    """Create all tables for tests or explicit local bootstrap workflows."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

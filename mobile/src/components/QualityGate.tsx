@@ -9,6 +9,8 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { QualityFlag, QualityGateResult } from '../types';
 
+const SKIP_QUALITY_GATE = process.env.EXPO_PUBLIC_SKIP_QUALITY_GATE === 'true';
+
 const FLAG_LABELS: Record<QualityFlag, string> = {
   low_lighting: 'Move to a brighter area',
   borderline_lighting: 'Lighting is borderline but still usable',
@@ -28,7 +30,7 @@ interface QualityIndicatorProps {
 }
 
 function QualityIndicator({ label, score, threshold }: QualityIndicatorProps) {
-  const passed = score > threshold;
+  const passed = SKIP_QUALITY_GATE || score > threshold;
   return (
     <View style={styles.indicatorRow} testID={`quality-indicator-${label}`}>
       <View style={[styles.dot, passed ? styles.dotGood : styles.dotBad]} />
@@ -56,9 +58,15 @@ export function QualityGate({ quality, onRetry, testID }: QualityGateProps) {
       <View style={styles.overallRow}>
         <Text style={styles.overallLabel}>Overall</Text>
         <Text style={[styles.overallScore, passed ? styles.textGood : styles.textBad]}>
-          {(overallScore * 100).toFixed(0)}%
+          {SKIP_QUALITY_GATE ? 'Bypassed' : `${(overallScore * 100).toFixed(0)}%`}
         </Text>
       </View>
+
+      {SKIP_QUALITY_GATE && (
+        <View style={styles.passedBanner} testID="quality-gate-bypassed">
+          <Text style={styles.passedText}>Local testing mode — quality gate bypassed</Text>
+        </View>
+      )}
 
       <QualityIndicator label="Lighting" score={metrics.lighting_score} threshold={0.4} />
       <QualityIndicator label="Steady" score={metrics.motion_score} threshold={0.95} />
@@ -83,7 +91,9 @@ export function QualityGate({ quality, onRetry, testID }: QualityGateProps) {
 
       {passed && (
         <View style={styles.passedBanner} testID="quality-passed">
-          <Text style={styles.passedText}>✓ Good quality — scan in progress</Text>
+          <Text style={styles.passedText}>
+            {SKIP_QUALITY_GATE ? '✓ Local testing mode — scan in progress' : '✓ Good quality — scan in progress'}
+          </Text>
         </View>
       )}
     </View>

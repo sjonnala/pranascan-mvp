@@ -2,15 +2,16 @@
  * VoiceCapture — records a real 5-second sustained vowel clip.
  *
  * The mobile client captures real microphone input, derives a live waveform
- * from metering updates, extracts audio samples from the recorded clip, and
- * runs on-device voice DSP (jitter, shimmer, SNR) via voiceProcessor.
+ * from metering updates, and runs on-device voice DSP (jitter, shimmer, SNR)
+ * via voiceProcessor. On native Expo Go builds, completion uses the captured
+ * metering envelope instead of replaying the clip for PCM extraction.
  * Only the derived wellness indicator scalars leave the device — audio samples
  * never leave the device.
  */
 
-import { Audio, AVPlaybackStatus } from 'expo-av';
+import { Audio } from 'expo-av';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import {
   AUDIO_SNR_PASS_THRESHOLD_DB,
@@ -19,14 +20,12 @@ import {
   buildWaveformBars,
   computeSnrDb,
   meteringDbToAmplitude,
-  resampleAudioSamples,
 } from '../utils/voiceAnalyzer';
 import { processVoice } from '../utils/voiceProcessor';
 
 const RECORD_DURATION_MS = 5_000;
 const STATUS_UPDATE_INTERVAL_MS = 100;
-const SAMPLE_EXTRACTION_RATE = 16;
-const PROCESSING_TIMEOUT_MS = 2_000;
+const USE_METERING_ONLY_AUDIO = Platform.OS !== 'web';
 
 const RECORDING_OPTIONS: Audio.RecordingOptions = {
   isMeteringEnabled: true,
@@ -134,28 +133,18 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
         }
       });
 
-      try {
-        await sound.setRateAsync(SAMPLE_EXTRACTION_RATE, false);
-      } catch {
-        // Rate adjustment is optional. Continue at normal speed if unavailable.
-      }
-
       await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(resolve, PROCESSING_TIMEOUT_MS);
-
-        sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+        sound.setOnPlaybackStatusUpdate((status) => {
           if (!status.isLoaded) {
             return;
           }
 
           if (status.didJustFinish) {
-            clearTimeout(timeout);
             resolve();
           }
         });
 
         sound.replayAsync({ shouldPlay: true, volume: 0 }).catch((error) => {
-          clearTimeout(timeout);
           reject(error);
         });
       });
@@ -195,14 +184,16 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
       await activeRecording.stopAndUnloadAsync();
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
 
-      const pcmFrames = await extractAudioSamples(activeRecording).catch(() => []);
+      // Expo Go on native platforms has been unstable when replaying a fresh
+      // recording for PCM extraction, so use the already-collected metering
+      // envelope there and keep the replay-based path for web only.
+      const pcmFrames = USE_METERING_ONLY_AUDIO
+        ? []
+        : await extractAudioSamples(activeRecording).catch(() => []);
       const audioSamples =
         pcmFrames.length > 0
-          ? resampleAudioSamples(pcmFrames, TARGET_AUDIO_SAMPLE_COUNT)
-          : buildFallbackAudioSamples(
-              meteringSamplesRef.current,
-              TARGET_AUDIO_SAMPLE_COUNT,
-            );
+          ? pcmFrames
+          : buildFallbackAudioSamples(meteringSamplesRef.current, TARGET_AUDIO_SAMPLE_COUNT);
       const snrDb = computeSnrDb(
         pcmFrames.length > 0 ? audioSamples : meteringSamplesRef.current,
       );

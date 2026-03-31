@@ -114,6 +114,14 @@ def run_quality_gate(payload: ScanResultSubmit) -> QualityGateResult:
       warnings         — WARNING-level flags only (scan proceeded despite these)
       rejection_reason — human-readable description of ERROR violations
     """
+    if settings.skip_quality_gate:
+        return QualityGateResult(
+            passed=True,
+            flags=list(dict.fromkeys(payload.flags)),
+            warnings=[],
+            rejection_reason=None,
+        )
+
     accumulated_flags: list[str] = list(payload.flags)
     warnings: list[str] = []
     hard_failures: list[str] = []

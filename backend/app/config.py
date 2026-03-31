@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./pranascan_test.db"
+    auto_create_tables: bool = False
 
     # Security
     secret_key: str = "dev-secret-key-change-in-production"
@@ -30,6 +31,7 @@ class Settings(BaseSettings):
     min_motion_score: float = 0.95
     min_face_confidence: float = 0.8
     min_audio_snr_db: float = 15.0
+    skip_quality_gate: bool = False
 
     # Latency
     latency_target_ms: int = 15_000  # target: <15s end-to-end scan processing

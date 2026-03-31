@@ -5,6 +5,8 @@
 import { useState, useCallback } from 'react';
 import { QualityFlag, QualityGateResult, QualityMetrics } from '../types';
 
+const SKIP_QUALITY_GATE = process.env.EXPO_PUBLIC_SKIP_QUALITY_GATE === 'true';
+
 // Thresholds must match backend config
 const THRESHOLDS = {
   lighting_score: 0.4,
@@ -14,6 +16,15 @@ const THRESHOLDS = {
 } as const;
 
 export function evaluateQuality(metrics: QualityMetrics): QualityGateResult {
+  if (SKIP_QUALITY_GATE) {
+    return {
+      passed: true,
+      flags: [],
+      metrics,
+      overallScore: 1.0,
+    };
+  }
+
   const flags: QualityFlag[] = [];
 
   if (metrics.lighting_score <= THRESHOLDS.lighting_score) {

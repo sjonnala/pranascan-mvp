@@ -20,6 +20,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { FrameSample, QualityMetrics } from '../types';
 import {
+  aggregateQualityMetrics,
   buildFrameSample,
   computeFaceConfidence,
   computeLightingScore,
@@ -85,14 +86,12 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
   const scanStartRef = useRef<number | null>(null);
   const frameDataRef = useRef<FrameSample[]>([]);
   const prevBase64Ref = useRef<string | null>(null);
-  const lastLightingRef = useRef<number>(0.5);
-  const lastMotionRef = useRef<number>(1.0);
-  /**
-   * Tracks the most-recently computed face confidence so finaliseScan() can
-   * use the real value instead of a constant proxy.
-   * Initialised to 0.5 (uncertain) — updated each frame via computeFaceConfidence().
-   */
-  const lastFaceConfidenceRef = useRef<number>(0.5);
+  const lightingHistoryRef = useRef<number[]>([]);
+  const motionHistoryRef = useRef<number[]>([]);
+  const faceConfidenceHistoryRef = useRef<number[]>([]);
+  const scanActiveRef = useRef(false);
+  const finalisingRef = useRef(false);
+  const capturePromiseRef = useRef<Promise<string | null> | null>(null);
   const frameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -109,7 +108,12 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
     }
   }, []);
 
-  useEffect(() => () => stopTimers(), [stopTimers]);
+  useEffect(() => {
+    return () => {
+      scanActiveRef.current = false;
+      stopTimers();
+    };
+  }, [stopTimers]);
 
   // ── Frame capture ─────────────────────────────────────────────────────────
 
@@ -128,14 +132,28 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
 
   // ── Scan orchestration ───────────────────────────────────────────────────
 
-  const finaliseScan = useCallback(() => {
+  const finaliseScan = useCallback(async () => {
+    if (finalisingRef.current) {
+      return;
+    }
+
+    finalisingRef.current = true;
+    scanActiveRef.current = false;
     stopTimers();
+
+    const activeCapture = capturePromiseRef.current;
+    if (activeCapture) {
+      await activeCapture.catch(() => null);
+    }
+
     setIsScanning(false);
 
     const frames = frameDataRef.current;
-    const lighting = lastLightingRef.current;
-    const motion = lastMotionRef.current;
-    const faceConf = lastFaceConfidenceRef.current;
+    const aggregatedQuality = aggregateQualityMetrics(
+      lightingHistoryRef.current,
+      motionHistoryRef.current,
+      faceConfidenceHistoryRef.current,
+    );
 
     // ── On-device rPPG processing ────────────────────────────────────────
     // Runs synchronously on the collected frame_data.  No frame bytes leave
@@ -149,9 +167,9 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
     const aggBMean = frameCount > 0 ? frames.reduce((s, f) => s + f.b_mean, 0) / frameCount : null;
 
     const finalQuality: QualityMetrics = {
-      lighting_score: lighting,
-      motion_score: motion,
-      face_confidence: faceConf,
+      lighting_score: aggregatedQuality.lighting_score,
+      motion_score: aggregatedQuality.motion_score,
+      face_confidence: aggregatedQuality.face_confidence,
       audio_snr_db: AUDIO_SNR_DEFAULT,
     };
 
@@ -161,9 +179,9 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
       respiratory_rate: rppgResult.respiratory_rate,
       quality: finalQuality,
       quality_score: computeOverallQualityScore(
-        lighting,
-        motion,
-        faceConf,
+        aggregatedQuality.lighting_score,
+        aggregatedQuality.motion_score,
+        aggregatedQuality.face_confidence,
         AUDIO_SNR_DEFAULT,
       ),
       frame_data: frames,     // retained on device, not submitted to backend
@@ -174,6 +192,14 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
     });
   }, [stopTimers, onComplete]);
 
+  const handleCancel = useCallback(() => {
+    scanActiveRef.current = false;
+    finalisingRef.current = false;
+    stopTimers();
+    setIsScanning(false);
+    onCancel();
+  }, [onCancel, stopTimers]);
+
   const startScan = useCallback(async () => {
     if (!permission?.granted) {
       await requestPermission();
@@ -181,43 +207,64 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
     }
 
     setIsScanning(true);
+    setCurrentQuality(null);
+    setTimeRemaining(SCAN_DURATION_MS / 1000);
     frameDataRef.current = [];
     prevBase64Ref.current = null;
-    lastFaceConfidenceRef.current = 0.5; // reset to uncertain at scan start
+    lightingHistoryRef.current = [];
+    motionHistoryRef.current = [];
+    faceConfidenceHistoryRef.current = [];
     scanStartRef.current = Date.now();
+    scanActiveRef.current = true;
+    finalisingRef.current = false;
 
-    // Frame sampling interval
-    frameIntervalRef.current = setInterval(async () => {
-      const elapsed = Date.now() - (scanStartRef.current ?? Date.now());
-      const base64 = await captureFrame();
-
-      if (base64) {
-        const lighting = computeLightingScore(base64);
-        const motion = prevBase64Ref.current
-          ? computeMotionScore(prevBase64Ref.current, base64)
-          : 1.0;
-
-        // Real per-frame face confidence: heuristic from lighting + JPEG size +
-        // motion stability.  Sprint 3 will replace with ML Kit face detector.
-        const faceConf = computeFaceConfidence(base64, lighting, motion);
-
-        lastLightingRef.current = lighting;
-        lastMotionRef.current = motion;
-        lastFaceConfidenceRef.current = faceConf;
-        prevBase64Ref.current = base64;
-
-        const frame = buildFrameSample(base64, elapsed);
-        frameDataRef.current.push(frame);
-
-        const metrics: QualityMetrics = {
-          lighting_score: lighting,
-          motion_score: motion,
-          face_confidence: faceConf,
-          audio_snr_db: AUDIO_SNR_DEFAULT,
-        };
-        setCurrentQuality(metrics);
-        onQualityUpdate(metrics);
+    // Serialize photo capture so Expo Go never sees overlapping takePictureAsync calls.
+    frameIntervalRef.current = setInterval(() => {
+      if (!scanActiveRef.current || capturePromiseRef.current) {
+        return;
       }
+
+      const elapsed = Date.now() - (scanStartRef.current ?? Date.now());
+      const capturePromise = captureFrame();
+      capturePromiseRef.current = capturePromise;
+
+      void capturePromise
+        .then((base64) => {
+          if (!scanActiveRef.current || !base64) {
+            return;
+          }
+
+          const lighting = computeLightingScore(base64);
+          const motion = prevBase64Ref.current
+            ? computeMotionScore(prevBase64Ref.current, base64)
+            : 1.0;
+
+          // Real per-frame face confidence: heuristic from lighting + JPEG size +
+          // motion stability. Sprint 3 will replace with ML Kit face detector.
+          const faceConf = computeFaceConfidence(base64, lighting, motion);
+
+          lightingHistoryRef.current.push(lighting);
+          motionHistoryRef.current.push(motion);
+          faceConfidenceHistoryRef.current.push(faceConf);
+          prevBase64Ref.current = base64;
+
+          const frame = buildFrameSample(base64, elapsed);
+          frameDataRef.current.push(frame);
+
+          const metrics: QualityMetrics = {
+            lighting_score: lighting,
+            motion_score: motion,
+            face_confidence: faceConf,
+            audio_snr_db: AUDIO_SNR_DEFAULT,
+          };
+          setCurrentQuality(metrics);
+          onQualityUpdate(metrics);
+        })
+        .finally(() => {
+          if (capturePromiseRef.current === capturePromise) {
+            capturePromiseRef.current = null;
+          }
+        });
     }, FRAME_INTERVAL_MS);
 
     // Countdown interval
@@ -225,7 +272,9 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
       const elapsed = Date.now() - (scanStartRef.current ?? Date.now());
       const remaining = Math.max(0, Math.ceil((SCAN_DURATION_MS - elapsed) / 1000));
       setTimeRemaining(remaining);
-      if (remaining <= 0) finaliseScan();
+      if (remaining <= 0) {
+        void finaliseScan();
+      }
     }, 200);
   }, [permission, requestPermission, captureFrame, onQualityUpdate, finaliseScan]);
 
@@ -257,7 +306,11 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
         >
           <Text style={styles.startButtonText}>Allow Camera</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.cancelLinkButton} onPress={onCancel} testID="cancel-scan">
+        <TouchableOpacity
+          style={styles.cancelLinkButton}
+          onPress={handleCancel}
+          testID="cancel-scan"
+        >
           <Text style={styles.cancelLinkText}>Cancel</Text>
         </TouchableOpacity>
       </View>
@@ -338,7 +391,7 @@ export function CameraCapture({ onComplete, onQualityUpdate, onCancel }: CameraC
         ) : (
           <TouchableOpacity
             style={styles.cancelButton}
-            onPress={onCancel}
+            onPress={handleCancel}
             testID="cancel-scan"
           >
             <Text style={styles.cancelButtonText}>Cancel</Text>

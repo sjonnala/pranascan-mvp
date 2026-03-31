@@ -53,10 +53,13 @@ async def seed_beta_invite_if_configured() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup / shutdown lifecycle."""
-    # In dev/test, auto-create tables. Production uses Alembic migrations.
-    if settings.environment in ("development", "test"):
+    # Keep Alembic as the default schema manager. AUTO_CREATE_TABLES is an explicit
+    # escape hatch for throwaway local databases only.
+    if settings.auto_create_tables:
+        if settings.environment == "production":
+            raise RuntimeError("AUTO_CREATE_TABLES must remain disabled in production.")
         await create_all_tables()
-        await seed_beta_invite_if_configured()
+    await seed_beta_invite_if_configured()
     yield
 
 

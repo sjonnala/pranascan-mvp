@@ -51,6 +51,7 @@ uvicorn app.main:app --reload
 Important local settings in `backend/.env`:
 
 - `DATABASE_URL`
+- `AUTO_CREATE_TABLES=false` unless you intentionally want a throwaway schema outside Alembic
 - `SECRET_KEY`
 - `ENVIRONMENT=development`
 - `DEBUG=false`
@@ -90,7 +91,17 @@ EXPO_PUBLIC_API_URL=http://192.168.1.25:8000
 - if beta gating is enabled, the seed invite code works
 - scan session creation succeeds against the backend
 
-## 5. Optional integrations you can leave off locally
+## 5. Migration troubleshooting
+
+If `alembic upgrade head` fails with duplicate table or duplicate index errors on an
+older local database, that database was likely created by the previous dev
+auto-create path instead of Alembic. The current migrations are now tolerant of
+that state, so rerunning `alembic upgrade head` should adopt the schema.
+
+If the local schema is still badly drifted after that, recreate the Podman
+volume and rerun the setup steps.
+
+## 6. Optional integrations you can leave off locally
 
 - Telegram
 - WhatsApp

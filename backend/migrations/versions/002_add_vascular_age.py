@@ -14,9 +14,16 @@ branch_labels = None
 depends_on = None
 
 
+def _has_column(table_name: str, column_name: str) -> bool:
+    inspector = sa.inspect(op.get_bind())
+    return column_name in {column["name"] for column in inspector.get_columns(table_name)}
+
+
 def upgrade() -> None:
-    op.add_column("scan_results", sa.Column("vascular_age_estimate", sa.Float, nullable=True))
-    op.add_column("scan_results", sa.Column("vascular_age_confidence", sa.Float, nullable=True))
+    if not _has_column("scan_results", "vascular_age_estimate"):
+        op.add_column("scan_results", sa.Column("vascular_age_estimate", sa.Float, nullable=True))
+    if not _has_column("scan_results", "vascular_age_confidence"):
+        op.add_column("scan_results", sa.Column("vascular_age_confidence", sa.Float, nullable=True))
 
 
 def downgrade() -> None:

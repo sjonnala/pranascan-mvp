@@ -174,7 +174,7 @@ describe('VoiceCapture', () => {
     expect(mockRequestPermission).toHaveBeenCalledTimes(1);
   });
 
-  it('captures real audio samples and returns SNR after recording completes', async () => {
+  it('completes on native without replaying the recorded clip and returns SNR', async () => {
     const onComplete = jest.fn();
     const { getByTestId } = render(
       <VoiceCapture onComplete={onComplete} onCancel={jest.fn()} />,
@@ -195,6 +195,7 @@ describe('VoiceCapture', () => {
     expect(result.audio_samples).toBeUndefined();
     expect(typeof result.audio_snr_db).toBe('number');
     expect(result.passed_snr).toBe(true);
+    expect(mockRecordingInstances[0].createNewLoadedSoundAsync).not.toHaveBeenCalled();
   });
 
   it('falls back to metering-derived samples when PCM extraction fails', async () => {

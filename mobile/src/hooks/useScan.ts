@@ -12,6 +12,11 @@ import { useCallback, useState } from 'react';
 import { createScanSession, completeScanSession, getScanSession } from '../api/client';
 import { ScanResult, ScanResultPayload, ScanSessionWithResult } from '../types';
 
+interface ScanErrorDetail {
+  message?: string;
+  rejection_reason?: string;
+}
+
 export type ScanPhase =
   | 'idle'
   | 'creating_session'
@@ -66,11 +71,16 @@ export function useScan(): UseScanReturn {
         setPhase('complete');
         return scanResult;
       } catch (e: unknown) {
-        // If quality gate rejects (422), extract the reason
-        const axiosErr = e as { response?: { data?: { detail?: { message?: string } } } };
+        const axiosErr = e as { response?: { data?: { detail?: string | ScanErrorDetail } } };
+        const detail = axiosErr?.response?.data?.detail;
         const msg =
-          axiosErr?.response?.data?.detail?.message ??
-          'Scan could not be processed. Please ensure good lighting and minimal movement.';
+          typeof detail === 'object' && detail?.rejection_reason
+            ? detail.rejection_reason
+            : typeof detail === 'object' && detail?.message
+              ? detail.message
+              : typeof detail === 'string'
+                ? detail
+                : 'Scan could not be processed. Please ensure good lighting and minimal movement.';
         setError(msg);
         setPhase('error');
         throw new Error(msg);

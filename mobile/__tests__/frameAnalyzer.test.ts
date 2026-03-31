@@ -4,6 +4,7 @@
  */
 
 import {
+  aggregateQualityMetrics,
   buildFrameSample,
   computeFaceConfidence,
   computeLightingScore,
@@ -298,6 +299,36 @@ describe('isTransientMotion', () => {
   it('returns false when unstable frames are spread through the middle of the scan', () => {
     const motionScores = [0.97, 0.96, 0.70, 0.98, 0.60, 0.97, 0.70, 0.95, 0.96, 0.97];
     expect(isTransientMotion(motionScores)).toBe(false);
+  });
+});
+
+describe('aggregateQualityMetrics', () => {
+  it('uses scan-level medians for lighting and face confidence', () => {
+    const aggregated = aggregateQualityMetrics(
+      [0.42, 0.78, 0.45, 0.44, 0.43],
+      [0.97, 0.98, 0.99, 0.98, 0.97],
+      [0.86, 0.88, 0.50, 0.87, 0.89],
+    );
+    expect(aggregated.lighting_score).toBeCloseTo(0.44, 5);
+    expect(aggregated.face_confidence).toBeCloseTo(0.87, 5);
+  });
+
+  it('recovers from transient edge motion instead of failing on a late bad frame', () => {
+    const aggregated = aggregateQualityMetrics(
+      [0.55, 0.56, 0.57, 0.56, 0.55, 0.56, 0.55, 0.56, 0.55, 0.56],
+      [0.70, 0.96, 0.97, 0.98, 0.99, 0.97, 0.96, 0.95, 0.80, 0.70],
+      [0.84, 0.86, 0.87, 0.88, 0.87, 0.86, 0.85, 0.86, 0.50, 0.50],
+    );
+    expect(aggregated.motion_score).toBeGreaterThanOrEqual(0.95);
+    expect(aggregated.face_confidence).toBeGreaterThan(0.8);
+  });
+
+  it('falls back to safe defaults when no frame metrics are available', () => {
+    expect(aggregateQualityMetrics([], [], [])).toEqual({
+      lighting_score: 0.5,
+      motion_score: 1.0,
+      face_confidence: 0.5,
+    });
   });
 });
 

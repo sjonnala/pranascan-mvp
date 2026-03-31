@@ -74,6 +74,13 @@ export function computeMotionScore(prevBase64: string, currBase64: string): numb
   return Math.max(0.0, Math.min(1.0, raw));
 }
 
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
 /**
  * Builds a FrameSample from a base64-encoded JPEG and a timestamp.
  *
@@ -185,6 +192,42 @@ export function computeOverallQualityScore(
     0,
     Math.min(1, lightingScore * 0.3 + motionScore * 0.3 + faceConfidence * 0.3 + snrNorm * 0.1),
   );
+}
+
+export interface AggregatedQualityMetrics {
+  lighting_score: number;
+  motion_score: number;
+  face_confidence: number;
+}
+
+/**
+ * Summarises per-frame quality into one stable scan-level snapshot.
+ *
+ * We use robust aggregation instead of the final frame only, because one bad
+ * frame near the end of the 30-second capture can otherwise reject an
+ * otherwise-usable scan.
+ */
+export function aggregateQualityMetrics(
+  lightingScores: number[],
+  motionScores: number[],
+  faceConfidences: number[],
+): AggregatedQualityMetrics {
+  const lighting_score = lightingScores.length > 0 ? median(lightingScores) : 0.5;
+  const face_confidence = faceConfidences.length > 0 ? median(faceConfidences) : 0.5;
+
+  let motion_score = motionScores.length > 0 ? median(motionScores) : 1.0;
+  if (motionScores.length > 0 && isTransientMotion(motionScores)) {
+    const stableScores = motionScores.filter((score) => score >= 0.95);
+    if (stableScores.length > 0) {
+      motion_score = median(stableScores);
+    }
+  }
+
+  return {
+    lighting_score,
+    motion_score,
+    face_confidence,
+  };
 }
 
 // ---------------------------------------------------------------------------
