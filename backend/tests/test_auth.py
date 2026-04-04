@@ -1,4 +1,4 @@
-"""Tests for JWT auth endpoints and enforcement."""
+"""Tests for JWT auth enforcement and token service."""
 
 import pytest
 from httpx import AsyncClient
@@ -7,32 +7,6 @@ from jose import jwt
 from app.config import settings
 from app.services.auth_service import create_access_token, create_refresh_token, decode_token
 from tests.conftest import TEST_USER_ID
-
-# ---------------------------------------------------------------------------
-# Token issuance
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_issue_token(client: AsyncClient):
-    """POST /auth/token returns access + refresh tokens."""
-    resp = await client.post("/api/v1/auth/token", json={"user_id": TEST_USER_ID})
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "access_token" in data
-    assert "refresh_token" in data
-    assert data["token_type"] == "bearer"
-    assert data["expires_in"] > 0
-
-
-@pytest.mark.asyncio
-async def test_issued_token_is_valid_jwt(client: AsyncClient):
-    """Issued access token is a valid JWT with correct sub."""
-    resp = await client.post("/api/v1/auth/token", json={"user_id": TEST_USER_ID})
-    token = resp.json()["access_token"]
-    payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-    assert payload["sub"] == TEST_USER_ID
-    assert payload["type"] == "access"
 
 
 # ---------------------------------------------------------------------------
@@ -43,9 +17,7 @@ async def test_issued_token_is_valid_jwt(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_get_me_with_valid_token(client: AsyncClient):
     """GET /auth/me returns user info for valid token."""
-    token_resp = await client.post("/api/v1/auth/token", json={"user_id": TEST_USER_ID})
-    token = token_resp.json()["access_token"]
-
+    token = create_access_token(TEST_USER_ID)
     resp = await client.get(
         "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {token}"},
@@ -66,10 +38,8 @@ async def test_get_me_no_token(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_get_me_tampered_token(client: AsyncClient):
     """Tampered token is rejected with 401."""
-    token_resp = await client.post("/api/v1/auth/token", json={"user_id": TEST_USER_ID})
-    token = token_resp.json()["access_token"]
+    token = create_access_token(TEST_USER_ID)
     tampered = token[:-5] + "XXXXX"
-
     resp = await client.get(
         "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {tampered}"},
@@ -113,9 +83,7 @@ async def test_expired_token_rejected(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_refresh_token_issues_new_pair(client: AsyncClient):
     """POST /auth/refresh with valid refresh token returns new token pair."""
-    token_resp = await client.post("/api/v1/auth/token", json={"user_id": TEST_USER_ID})
-    refresh = token_resp.json()["refresh_token"]
-
+    refresh = create_refresh_token(TEST_USER_ID)
     resp = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh})
     assert resp.status_code == 200
     data = resp.json()
@@ -126,15 +94,25 @@ async def test_refresh_token_issues_new_pair(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_refresh_with_access_token_rejected(client: AsyncClient):
     """Passing an access token to /auth/refresh is rejected."""
-    token_resp = await client.post("/api/v1/auth/token", json={"user_id": TEST_USER_ID})
-    access = token_resp.json()["access_token"]
-
+    access = create_access_token(TEST_USER_ID)
     resp = await client.post("/api/v1/auth/refresh", json={"refresh_token": access})
     assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
-# service-level unit tests
+# Old stub endpoint returns 410
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_old_token_stub_returns_410(client: AsyncClient):
+    """POST /auth/token (old dev stub) now returns 410 Gone."""
+    resp = await client.post("/api/v1/auth/token", json={"user_id": TEST_USER_ID})
+    assert resp.status_code == 410
+
+
+# ---------------------------------------------------------------------------
+# Service-level unit tests
 # ---------------------------------------------------------------------------
 
 

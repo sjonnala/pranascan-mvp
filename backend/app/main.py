@@ -21,6 +21,12 @@ from app.models import (
 from app.models import (
     feedback as _feedback_models,  # noqa: F401 — register tables with Base.metadata
 )
+from app.models import (
+    otp as _otp_models,  # noqa: F401 — register tables with Base.metadata
+)
+from app.models import (
+    user as _user_models,  # noqa: F401 — register tables with Base.metadata
+)
 from app.models.beta import BetaInvite
 from app.routers import abha, agent, audit, auth, beta, consent, feedback, scan, vitality_report
 
