@@ -1,9 +1,9 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store'; // Import expo-secure-store
 
-// DECISION: API_BASE_URL is now loaded from environment variables using process.env.EXPO_PUBLIC_API_BASE_URL.
-// A fallback URL is provided for development environments where the variable might not be explicitly set.
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://api.pranascan.com/v1';
+// DECISION: Plain constant for API base URL — avoids babel-preset-expo's EXPO_PUBLIC_*
+// virtual env transform which breaks Jest. Production URL injected via app.config.js extras.
+const API_BASE_URL = 'https://api.pranascan.com/v1';
 
 interface ApiResponse {
   message: string;

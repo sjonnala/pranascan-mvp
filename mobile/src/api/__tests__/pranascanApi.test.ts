@@ -1,62 +1,85 @@
-import axios from 'axios';
-import MockAdapter from 'axios-mock-adapter';
-import { revokeConsent, requestDataDeletion } from '../pranascanApi';
-import * as SecureStore from 'expo-secure-store'; // Import SecureStore for mocking
+/**
+ * Tests for pranascanApi consent/deletion functions.
+ *
+ * NOTE: jest.mock is hoisted. We get the mock references by importing the module
+ * AFTER jest.mock declarations — this ensures pranascanApi.ts and this test file
+ * share the same mocked module instances.
+ */
 
-const mock = new MockAdapter(axios);
-
-// Mock process.env.EXPO_PUBLIC_API_BASE_URL
-const MOCK_API_BASE_URL = 'https://mock-api.pranascan.com/v1';
-process.env.EXPO_PUBLIC_API_BASE_URL = MOCK_API_BASE_URL;
-
-// Mock SecureStore
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(),
 }));
 
+// Use a manual jest.mock factory for axios so we control post and isAxiosError.
+// Both this test file and pranascanApi.ts will get the same mock object
+// because jest module registry is shared within a test file.
+jest.mock('axios', () => {
+  const post = jest.fn();
+  const isAxiosError = jest.fn().mockImplementation((e: any) => e?.isAxiosError === true);
+  return {
+    __esModule: true,
+    default: { post, isAxiosError },
+    post,
+    isAxiosError,
+  };
+});
+
+// Import AFTER jest.mock so both this file and pranascanApi.ts get the same instance
+import axios from 'axios';
+import { revokeConsent, requestDataDeletion } from '../pranascanApi';
+import * as SecureStore from 'expo-secure-store';
+
+const mockPost = axios.post as jest.Mock;
 const mockGetItemAsync = SecureStore.getItemAsync as jest.Mock;
 
 describe('pranascanApi', () => {
   beforeEach(() => {
-    mock.reset();
+    jest.clearAllMocks();
     mockGetItemAsync.mockResolvedValue(null); // Default: no token
   });
 
   describe('revokeConsent', () => {
     it('should successfully revoke consent with authentication', async () => {
-      const successResponse = { message: 'Consent revoked successfully.' };
       const testToken = 'test-jwt-token';
       mockGetItemAsync.mockResolvedValue(testToken);
-      mock.onPost(`${MOCK_API_BASE_URL}/consent/revoke`, {}, {
-        headers: { Authorization: `Bearer ${testToken}` }
-      }).reply(200, successResponse);
+      mockPost.mockResolvedValue({ data: { message: 'Consent revoked successfully.' } });
 
       const result = await revokeConsent();
-      expect(result).toEqual(successResponse);
+
+      expect(result).toEqual({ message: 'Consent revoked successfully.' });
       expect(mockGetItemAsync).toHaveBeenCalledWith('userToken');
-      expect(mock.history.post[0].headers?.Authorization).toBe(`Bearer ${testToken}`);
+      expect(mockPost).toHaveBeenCalledWith(
+        expect.stringContaining('/consent/revoke'),
+        {},
+        { headers: { Authorization: `Bearer ${testToken}` } },
+      );
     });
 
     it('should successfully revoke consent without authentication if no token is present', async () => {
-      const successResponse = { message: 'Consent revoked successfully.' };
-      mockGetItemAsync.mockResolvedValue(null); // No token
-      mock.onPost(`${MOCK_API_BASE_URL}/consent/revoke`).reply(200, successResponse);
+      mockPost.mockResolvedValue({ data: { message: 'Consent revoked successfully.' } });
 
       const result = await revokeConsent();
-      expect(result).toEqual(successResponse);
-      expect(mockGetItemAsync).toHaveBeenCalledWith('userToken');
-      expect(mock.history.post[0].headers?.Authorization).toBeUndefined(); // No auth header
+
+      expect(result).toEqual({ message: 'Consent revoked successfully.' });
+      expect(mockPost).toHaveBeenCalledWith(
+        expect.stringContaining('/consent/revoke'),
+        {},
+        { headers: {} },
+      );
     });
 
     it('should throw an error if consent revocation fails', async () => {
-      const errorResponse = { message: 'Consent revocation failed due to server error.' };
-      mock.onPost(`${MOCK_API_BASE_URL}/consent/revoke`).reply(500, errorResponse);
+      const axiosError = {
+        isAxiosError: true,
+        response: { data: { message: 'Consent revocation failed due to server error.' } },
+      };
+      mockPost.mockRejectedValue(axiosError);
 
       await expect(revokeConsent()).rejects.toThrow('Consent revocation failed due to server error.');
     });
 
     it('should throw a generic error for network issues', async () => {
-      mock.onPost(`${MOCK_API_BASE_URL}/consent/revoke`).networkError();
+      mockPost.mockRejectedValue(new Error('Network Error'));
 
       await expect(revokeConsent()).rejects.toThrow('An unexpected error occurred during consent revocation.');
     });
@@ -64,39 +87,45 @@ describe('pranascanApi', () => {
 
   describe('requestDataDeletion', () => {
     it('should successfully request data deletion with authentication', async () => {
-      const successResponse = { message: 'Data deletion request submitted successfully.' };
       const testToken = 'test-jwt-token-2';
       mockGetItemAsync.mockResolvedValue(testToken);
-      mock.onPost(`${MOCK_API_BASE_URL}/consent/deletion-request`, {}, {
-        headers: { Authorization: `Bearer ${testToken}` }
-      }).reply(200, successResponse);
+      mockPost.mockResolvedValue({ data: { message: 'Data deletion request submitted successfully.' } });
 
       const result = await requestDataDeletion();
-      expect(result).toEqual(successResponse);
-      expect(mockGetItemAsync).toHaveBeenCalledWith('userToken');
-      expect(mock.history.post[0].headers?.Authorization).toBe(`Bearer ${testToken}`);
+
+      expect(result).toEqual({ message: 'Data deletion request submitted successfully.' });
+      expect(mockPost).toHaveBeenCalledWith(
+        expect.stringContaining('/consent/deletion-request'),
+        {},
+        { headers: { Authorization: `Bearer ${testToken}` } },
+      );
     });
 
     it('should successfully request data deletion without authentication if no token is present', async () => {
-      const successResponse = { message: 'Data deletion request submitted successfully.' };
-      mockGetItemAsync.mockResolvedValue(null); // No token
-      mock.onPost(`${MOCK_API_BASE_URL}/consent/deletion-request`).reply(200, successResponse);
+      mockPost.mockResolvedValue({ data: { message: 'Data deletion request submitted successfully.' } });
 
       const result = await requestDataDeletion();
-      expect(result).toEqual(successResponse);
-      expect(mockGetItemAsync).toHaveBeenCalledWith('userToken');
-      expect(mock.history.post[0].headers?.Authorization).toBeUndefined(); // No auth header
+
+      expect(result).toEqual({ message: 'Data deletion request submitted successfully.' });
+      expect(mockPost).toHaveBeenCalledWith(
+        expect.stringContaining('/consent/deletion-request'),
+        {},
+        { headers: {} },
+      );
     });
 
     it('should throw an error if data deletion request fails', async () => {
-      const errorResponse = { message: 'Data deletion request failed due to server error.' };
-      mock.onPost(`${MOCK_API_BASE_URL}/consent/deletion-request`).reply(500, errorResponse);
+      const axiosError = {
+        isAxiosError: true,
+        response: { data: { message: 'Data deletion request failed due to server error.' } },
+      };
+      mockPost.mockRejectedValue(axiosError);
 
       await expect(requestDataDeletion()).rejects.toThrow('Data deletion request failed due to server error.');
     });
 
     it('should throw a generic error for network issues', async () => {
-      mock.onPost(`${MOCK_API_BASE_URL}/consent/deletion-request`).networkError();
+      mockPost.mockRejectedValue(new Error('Network Error'));
 
       await expect(requestDataDeletion()).rejects.toThrow('An unexpected error occurred during data deletion request.');
     });
