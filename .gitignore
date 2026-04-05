@@ -21,6 +21,7 @@ node_modules/
 .expo/
 dist/
 web-build/
+coverage/
 *.jks
 *.p8
 *.p12
@@ -35,6 +36,7 @@ web-build/
 .vscode/
 *.swp
 *.swo
+*.iml
 
 # OS
 .DS_Store
