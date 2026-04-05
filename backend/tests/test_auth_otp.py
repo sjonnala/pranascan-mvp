@@ -7,10 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.otp import OTPRequest
-from app.services.otp_service import hash_otp
 
 TEST_PHONE = "+919876543210"
-TEST_PHONE_2 = "+919876543211"
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +135,7 @@ async def test_verify_otp_expired(client: AsyncClient, db_session: AsyncSession)
     otp = req_resp.json()["otp"]
 
     # Manually expire the OTP in the database
-    from sqlalchemy import select, update
+    from sqlalchemy import update
 
     stmt = (
         update(OTPRequest)
@@ -157,7 +155,7 @@ async def test_verify_otp_expired(client: AsyncClient, db_session: AsyncSession)
 @pytest.mark.asyncio
 async def test_verify_otp_rate_limit(client: AsyncClient, db_session: AsyncSession):
     """After 5 failed attempts, further attempts are rejected."""
-    from sqlalchemy import select, update
+    from sqlalchemy import update
 
     req_resp = await client.post("/api/v1/auth/otp/request", json={"phone": TEST_PHONE})
     otp = req_resp.json()["otp"]

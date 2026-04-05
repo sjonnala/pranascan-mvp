@@ -2,12 +2,10 @@
 
 import pytest
 from httpx import AsyncClient
-from jose import jwt
 
 from app.config import settings
 from app.services.auth_service import create_access_token, create_refresh_token, decode_token
 from tests.conftest import TEST_USER_ID
-
 
 # ---------------------------------------------------------------------------
 # /auth/me

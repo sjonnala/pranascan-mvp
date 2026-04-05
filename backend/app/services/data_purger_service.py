@@ -1,20 +1,16 @@
 import logging
 import uuid
 from datetime import datetime, timedelta
-from typing import List
 
+from sqlalchemy import and_, delete
 from sqlalchemy.orm import Session
-from sqlalchemy import delete, and_, func
 
-# Assuming these models exist and have 'user_id' columns
-from app.models.deletion_request import DeletionRequest, DeletionRequestStatus
-# DECISION: Assuming ScanSession and ConsentRecord models exist and are importable this way.
-# If they are in different modules, these imports would need to be adjusted.
-# Also assuming they have a 'user_id' column of type UUID.
-from app.models.scan import ScanSession
 from app.models.consent import ConsentRecord
+from app.models.deletion_request import DeletionRequest, DeletionRequestStatus
+from app.models.scan import ScanSession
 
 logger = logging.getLogger(__name__)
+
 
 class DataPurgerService:
     def __init__(self, db: Session):
@@ -50,7 +46,7 @@ class DataPurgerService:
         # Calculate the cutoff time for 30 days ago
         cutoff_time = datetime.utcnow() - timedelta(days=30)
 
-        eligible_requests: List[DeletionRequest] = (
+        eligible_requests: list[DeletionRequest] = (
             self.db.query(DeletionRequest)
             .filter(
                 and_(
@@ -72,7 +68,7 @@ class DataPurgerService:
                 "purged_users": 0,
                 "scan_sessions_deleted": 0,
                 "consent_records_deleted": 0,
-                "status": "completed_no_purges"
+                "status": "completed_no_purges",
             }
 
         for request in eligible_requests:
@@ -99,37 +95,44 @@ class DataPurgerService:
                 purged_users_count += 1
                 request.status = DeletionRequestStatus.COMPLETED.value
                 request.purged_at = datetime.utcnow()
-                request.failure_reason = None # Clear any previous failure reason
+                request.failure_reason = None
                 self.db.add(request)
                 self.db.commit()
                 logger.info(f"Deletion request {request.id} for user {user_id} marked as COMPLETED.")
 
             except Exception as e:
-                self.db.rollback() # Rollback current transaction for this user
+                self.db.rollback()
                 success = False
                 failure_reason = str(e)
                 request.status = DeletionRequestStatus.FAILED.value
-                request.purged_at = None # Ensure purged_at is None on failure
+                request.purged_at = None
                 request.failure_reason = failure_reason
                 self.db.add(request)
-                self.db.commit() # Commit the status update for the request
-                logger.error(f"Error processing deletion for user_id: {user_id}, request_id: {request.id}. "
-                             f"Error: {e}", exc_info=True)
+                self.db.commit()
+                logger.error(
+                    f"Error processing deletion for user_id: {user_id}, request_id: {request.id}. "
+                    f"Error: {e}",
+                    exc_info=True,
+                )
                 logger.warning(f"Deletion request {request.id} for user {user_id} marked as FAILED.")
 
             finally:
                 # Even if no data was found, mark as completed if no errors occurred.
                 if success and user_scan_sessions_deleted == 0 and user_consent_records_deleted == 0:
-                    logger.info(f"No scan sessions or consent records found for user_id: {user_id}. "
-                                f"Deletion request {request.id} marked as COMPLETED.")
+                    logger.info(
+                        f"No scan sessions or consent records found for user_id: {user_id}. "
+                        f"Deletion request {request.id} marked as COMPLETED."
+                    )
 
         end_time = datetime.utcnow()
         duration = (end_time - start_time).total_seconds()
         logger.info(f"Data purging job finished in {duration:.2f} seconds.")
-        logger.info(f"Summary: Processed {processed_requests_count} requests, "
-                    f"purged data for {purged_users_count} users, "
-                    f"deleted {total_scan_sessions_deleted} scan sessions, "
-                    f"deleted {total_consent_records_deleted} consent records.")
+        logger.info(
+            f"Summary: Processed {processed_requests_count} requests, "
+            f"purged data for {purged_users_count} users, "
+            f"deleted {total_scan_sessions_deleted} scan sessions, "
+            f"deleted {total_consent_records_deleted} consent records."
+        )
 
         return {
             "start_time": start_time,
@@ -138,5 +141,5 @@ class DataPurgerService:
             "purged_users": purged_users_count,
             "scan_sessions_deleted": total_scan_sessions_deleted,
             "consent_records_deleted": total_consent_records_deleted,
-            "status": "completed_with_purges" if purged_users_count > 0 else "completed_no_purges"
+            "status": "completed_with_purges" if purged_users_count > 0 else "completed_no_purges",
         }

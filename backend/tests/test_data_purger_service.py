@@ -2,9 +2,7 @@
 
 import uuid
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, call
-
-import pytest
+from unittest.mock import MagicMock
 
 from app.models.deletion_request import DeletionRequestStatus
 from app.services.data_purger_service import DataPurgerService, DeletionRequest
@@ -121,7 +119,7 @@ class TestPurgeFailureAndRollback:
         db.execute.side_effect = Exception("DB connection lost")
 
         service = DataPurgerService(db)
-        result = service.purge_old_deletion_requests()
+        service.purge_old_deletion_requests()
 
         db.rollback.assert_called_once()
         assert request.status == DeletionRequestStatus.FAILED.value
