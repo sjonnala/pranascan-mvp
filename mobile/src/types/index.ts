@@ -5,6 +5,21 @@
  * Do NOT add any diagnostic fields or terminology.
  */
 
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+export interface CoreUserProfile {
+  id: string;
+  oidcSubject: string;
+  email: string | null;
+  displayName: string;
+  phoneE164: string | null;
+  avatarUrl: string | null;
+  active: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── Consent ─────────────────────────────────────────────────────────────────
 
 export interface ConsentRecord {
@@ -27,29 +42,13 @@ export interface ConsentStatus {
   deletion_scheduled_at: string | null;
 }
 
-// ─── Beta onboarding ─────────────────────────────────────────────────────────
-
-export interface BetaStatus {
-  user_id: string;
-  beta_onboarding_enabled: boolean;
-  enrolled: boolean;
-  invite_required: boolean;
-  cohort_name: string | null;
-  invite_code: string | null;
-  enrolled_at: string | null;
-}
-
-export interface BetaInviteRedeemPayload {
-  invite_code: string;
-}
-
-// ─── Quality ──────────────────────────────────────────────────────────────────
+// ─── Quality ─────────────────────────────────────────────────────────────────
 
 export interface QualityMetrics {
-  lighting_score: number; // 0–1 (min 0.4)
-  motion_score: number; // 0–1 (min 0.95)
-  face_confidence: number; // 0–1 (min 0.8)
-  audio_snr_db: number; // dB (min 15.0)
+  lighting_score: number;
+  motion_score: number;
+  face_confidence: number;
+  audio_snr_db: number;
 }
 
 export type QualityFlag =
@@ -70,7 +69,7 @@ export interface QualityGateResult {
   overallScore: number;
 }
 
-// ─── Scan ─────────────────────────────────────────────────────────────────────
+// ─── Scan ────────────────────────────────────────────────────────────────────
 
 export interface ScanSession {
   id: string;
@@ -90,27 +89,15 @@ export interface ScanResult {
   id: string;
   session_id: string;
   user_id: string;
-
-  /** Estimated heart rate (wellness indicator) */
   hr_bpm: number | null;
-  /** Estimated heart rate variability (wellness indicator) */
   hrv_ms: number | null;
-  /** Estimated respiratory rate (wellness indicator) */
+  spo2: number | null;
   respiratory_rate: number | null;
-  /** Voice jitter percentage (wellness indicator) */
   voice_jitter_pct: number | null;
-  /** Voice shimmer percentage (wellness indicator) */
   voice_shimmer_pct: number | null;
-
   quality_score: number;
   flags: QualityFlag[];
-
-  /**
-   * Trend alert — only "consider_lab_followup" or null.
-   * Never diagnostic language.
-   */
   trend_alert: 'consider_lab_followup' | null;
-
   created_at: string;
 }
 
@@ -140,29 +127,17 @@ export interface ScanFeedbackPayload {
   comment?: string;
 }
 
-// ─── Frame data ───────────────────────────────────────────────────────────────
+// ─── Frame data ──────────────────────────────────────────────────────────────
 
-/**
- * Per-frame colour channel means used on-device for rPPG processing.
- * Raw pixels NEVER leave the device. These values are used locally only —
- * they are NOT sent to the backend.
- */
 export interface FrameSample {
-  t_ms: number;    // milliseconds from scan start
-  r_mean: number;  // 0–255 mean red channel
-  g_mean: number;  // 0–255 mean green channel
-  b_mean: number;  // 0–255 mean blue channel
+  t_ms: number;
+  r_mean: number;
+  g_mean: number;
+  b_mean: number;
 }
 
 // ─── Scan payload sent to backend ────────────────────────────────────────────
 
-/**
- * Payload submitted to the backend after a scan session.
- *
- * Edge-first architecture: all signal processing (rPPG and voice DSP) runs
- * on-device. Only the derived wellness indicator scalars are sent to the
- * backend. Raw frame data and audio samples NEVER leave the device.
- */
 export interface ScanResultPayload {
   hr_bpm?: number;
   hrv_ms?: number;
@@ -175,21 +150,8 @@ export interface ScanResultPayload {
   face_confidence?: number;
   audio_snr_db?: number;
   flags: QualityFlag[];
-  /** Per-frame RGB means (optional, for future server-side validation). Raw video stays on device. */
   frame_data?: FrameSample[];
-  /** Mean red channel across all scan frames (0–255). For conjunctiva color proxy. */
   frame_r_mean?: number;
-  /** Mean green channel across all scan frames (0–255). */
   frame_g_mean?: number;
-  /** Mean blue channel across all scan frames (0–255). */
   frame_b_mean?: number;
 }
-
-// ─── Navigation ──────────────────────────────────────────────────────────────
-
-export type RootStackParamList = {
-  Beta: undefined;
-  Consent: undefined;
-  Scan: { userId: string };
-  Results: { sessionId: string; userId: string };
-};

@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package pranapulse.core.health.v1;
+
+option java_multiple_files = true;
+option java_package = "com.pranapulse.core.grpc.health.v1";
+option java_outer_classname = "HealthResultLifecycleProto";
+
+import "google/protobuf/timestamp.proto";
+
+service HealthResultLifecycleService {
+  rpc EvaluateHealthResult (EvaluateHealthResultRequest) returns (EvaluateHealthResultResponse);
+}
+
+message EvaluateHealthResultRequest {
+  string result_id = 1;
+  string user_id = 2;
+  google.protobuf.Timestamp recorded_at = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  google.protobuf.Timestamp verified_at = 5;
+  string verified_by = 6;
+  google.protobuf.Timestamp as_of = 7;
+}
+
+message EvaluateHealthResultResponse {
+  string result_id = 1;
+  string user_id = 2;
+  HealthResultStatus status = 3;
+  bool terminal = 4;
+  google.protobuf.Timestamp recorded_at = 5;
+  google.protobuf.Timestamp effective_at = 6;
+  google.protobuf.Timestamp expires_at = 7;
+  google.protobuf.Timestamp verified_at = 8;
+  string verified_by = 9;
+  google.protobuf.Timestamp expired_at = 10;
+  string expiration_reason = 11;
+}
+
+enum HealthResultStatus {
+  HEALTH_RESULT_STATUS_UNSPECIFIED = 0;
+  HEALTH_RESULT_STATUS_PENDING = 1;
+  HEALTH_RESULT_STATUS_VERIFIED = 2;
+  HEALTH_RESULT_STATUS_EXPIRED = 3;
+}

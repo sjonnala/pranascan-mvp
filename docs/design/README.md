@@ -10,12 +10,13 @@ the repo from scratch.
    Start here for the current architecture, system boundaries, and design principles.
 
 2. [component-workflows.md](./component-workflows.md)
-   Read this next for the main runtime flows: consent, scan, result retrieval,
-   trend alerting, and failure handling.
+   Read this next for the current runtime flows: OIDC login, consent, scan
+   orchestration, gRPC intelligence evaluation, result retrieval, and audit.
 
 3. [backend-design.md](./backend-design.md)
-   Use this to understand the FastAPI app, router boundaries, services,
-   middleware, data model, and extension points.
+   Use this to understand the current backend split: Spring Boot
+   `service-core` as the product-facing system of record and FastAPI
+   `service-intelligence` as the internal compute service.
 
 4. [mobile-design.md](./mobile-design.md)
    Use this to understand the React Native app shell, screen flow, hooks,
@@ -31,28 +32,25 @@ the repo from scratch.
 
 ## What These Docs Treat As Source Of Truth
 
-These design docs are based on the current checked-in code, not just the plan
-docs. That matters because the repo is in a transition state:
+These design docs are based on the current checked-in code, not just older plan
+docs. The repo has already crossed the main architecture boundary:
 
-- The original architecture docs describe a fully edge-first system.
-- The current mobile app mostly follows that edge-first path.
-- The backend still supports legacy or fallback server-side processing for
-  `frame_data` and `audio_samples`.
-- Additional backend features such as vascular-age estimation, anemia-screening
-  heuristics, alert cooldown, and webhook-based alert delivery now exist in code,
-  even if older planning docs do not consistently reflect them.
+- `service-core` owns product-facing auth, consent, scan orchestration,
+  reporting, feedback, and audit.
+- `service-intelligence` is now compute-only by default and serves an internal
+  gRPC contract to `service-core`.
+- Historical FastAPI public routes and OTP/JWT auth code have been removed from
+  the active runtime.
 
 ## Current High-Level Truth
 
-The current implementation is best described as a hybrid system:
+The current implementation is best described as a polyglot monolith:
 
-- Mobile performs the primary camera and voice signal processing on-device.
-- Backend remains the authoritative API, persistence, consent ledger, audit
-  trail, trend engine, alerting surface, and place where secondary heuristics
-  such as vascular age and anemia screening are computed.
-- The backend still accepts raw derived feature streams (`frame_data`,
-  `audio_samples`) when clients choose to use that path, but the current mobile
-  flow mostly submits final scalar indicators instead.
+- Mobile performs capture plus the OIDC login flow.
+- `service-core` is the public backend and source of truth for persisted
+  product state.
+- `service-intelligence` handles rPPG, quality gating, and derived heuristics
+  behind the private gRPC `EvaluateScan` boundary.
 
 ## Intended Audience
 

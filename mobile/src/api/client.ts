@@ -1,14 +1,13 @@
 /**
  * PranaScan API client.
- * Wraps all backend calls with typed request/response shapes.
+ * Wraps all service-core calls with typed request/response shapes.
  */
 
-import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import {
-  BetaInviteRedeemPayload,
-  BetaStatus,
   ConsentRecord,
   ConsentStatus,
+  CoreUserProfile,
   ScanFeedback,
   ScanFeedbackPayload,
   ScanResult,
@@ -17,147 +16,107 @@ import {
   ScanSessionWithResult,
 } from '../types';
 
-// In production, pull from expo-constants or environment config
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
+const CORE_BASE_URL =
+  process.env.EXPO_PUBLIC_CORE_API_URL ??
+  process.env.EXPO_PUBLIC_API_URL ??
+  'http://localhost:8080';
 
-interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
-  token_type: 'bearer';
-  expires_in: number;
-}
+let coreAccessToken: string | null = null;
 
-interface AuthSession {
-  userId: string;
-  accessToken: string;
-  refreshToken: string;
-}
-
-let authSession: AuthSession | null = null;
-let authBootstrapPromise: Promise<void> | null = null;
-
-const http: AxiosInstance = axios.create({
-  baseURL: `${BASE_URL}/api/v1`,
-  timeout: 15_000, // 15s matches latency budget
+const coreHttp: AxiosInstance = axios.create({
+  baseURL: `${CORE_BASE_URL}/api/v1`,
+  timeout: 15_000,
   headers: { 'Content-Type': 'application/json' },
 });
 
-http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  if (authSession?.accessToken && !isAuthRoute(config.url)) {
-    config.headers.set?.('Authorization', `Bearer ${authSession.accessToken}`);
-    if (!config.headers.get?.('Authorization')) {
-      config.headers.Authorization = `Bearer ${authSession.accessToken}`;
-    }
-  }
-  return config;
-});
-
-function isAuthRoute(url?: string): boolean {
-  return url === '/auth/token' || url === '/auth/refresh';
-}
-
-async function requestAuthSession(userId: string): Promise<AuthSession> {
-  const { data } = await http.post<TokenResponse>('/auth/token', { user_id: userId });
-  return {
-    userId,
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
+type RequestConfig = {
+  headers: {
+    Authorization?: string;
   };
+};
+
+function authConfig(accessToken: string | null): RequestConfig {
+  return accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : { headers: {} };
 }
 
-async function ensureAuthSession(userId: string): Promise<void> {
-  if (authSession?.userId === userId && authSession.accessToken) {
-    return;
+function requireCoreAccessToken(): string {
+  if (coreAccessToken) {
+    return coreAccessToken;
   }
-
-  if (authBootstrapPromise) {
-    await authBootstrapPromise;
-    if (authSession?.userId === userId && authSession.accessToken) {
-      return;
-    }
-  }
-
-  authBootstrapPromise = (async () => {
-    authSession = await requestAuthSession(userId);
-  })();
-
-  try {
-    await authBootstrapPromise;
-  } finally {
-    authBootstrapPromise = null;
-  }
+  throw new Error('You are not authenticated. Sign in before using service-core APIs.');
 }
 
-export function resetAuthSession(): void {
-  authSession = null;
-  authBootstrapPromise = null;
+export function configureCoreAccessToken(accessToken: string | null): void {
+  coreAccessToken = accessToken?.trim() ? accessToken.trim() : null;
 }
 
-// ─── Closed beta onboarding ──────────────────────────────────────────────────
+// ─── Auth ────────────────────────────────────────────────────────────────────
 
-export async function getBetaStatus(userId: string): Promise<BetaStatus> {
-  await ensureAuthSession(userId);
-  const { data } = await http.get<BetaStatus>('/beta/status');
-  return data;
-}
-
-export async function redeemBetaInvite(
-  userId: string,
-  payload: BetaInviteRedeemPayload
-): Promise<BetaStatus> {
-  await ensureAuthSession(userId);
-  const { data } = await http.post<BetaStatus>('/beta/redeem', payload);
+export async function getCurrentUserProfile(): Promise<CoreUserProfile> {
+  const { data } = await coreHttp.get<CoreUserProfile>(
+    '/auth/me',
+    authConfig(requireCoreAccessToken())
+  );
   return data;
 }
 
 // ─── Consent ─────────────────────────────────────────────────────────────────
 
 export async function grantConsent(
-  userId: string,
   consentVersion = '1.0',
   purpose = 'wellness_screening'
 ): Promise<ConsentRecord> {
-  await ensureAuthSession(userId);
-  const { data } = await http.post<ConsentRecord>('/consent', {
-    user_id: userId,
-    consent_version: consentVersion,
-    purpose,
-  });
+  const { data } = await coreHttp.post<ConsentRecord>(
+    '/consent',
+    {
+      consent_version: consentVersion,
+      purpose,
+    },
+    authConfig(requireCoreAccessToken())
+  );
   return data;
 }
 
-export async function revokeConsent(userId: string): Promise<ConsentRecord> {
-  await ensureAuthSession(userId);
-  const { data } = await http.post<ConsentRecord>('/consent/revoke', { user_id: userId });
+export async function revokeConsent(): Promise<ConsentRecord> {
+  const { data } = await coreHttp.post<ConsentRecord>(
+    '/consent/revoke',
+    {},
+    authConfig(requireCoreAccessToken())
+  );
   return data;
 }
 
-export async function requestDeletion(userId: string): Promise<ConsentRecord> {
-  await ensureAuthSession(userId);
-  const { data } = await http.post<ConsentRecord>('/consent/deletion-request', {
-    user_id: userId,
-  });
+export async function requestDeletion(): Promise<ConsentRecord> {
+  const { data } = await coreHttp.post<ConsentRecord>(
+    '/consent/deletion-request',
+    {},
+    authConfig(requireCoreAccessToken())
+  );
   return data;
 }
 
-export async function getConsentStatus(userId: string): Promise<ConsentStatus> {
-  const { data } = await http.get<ConsentStatus>('/consent/status', { params: { user_id: userId } });
+export async function getConsentStatus(): Promise<ConsentStatus> {
+  const { data } = await coreHttp.get<ConsentStatus>(
+    '/consent/status',
+    authConfig(requireCoreAccessToken())
+  );
   return data;
 }
 
 // ─── Scans ────────────────────────────────────────────────────────────────────
 
 export async function createScanSession(
-  userId: string,
   deviceModel?: string,
   appVersion?: string
 ): Promise<ScanSession> {
-  await ensureAuthSession(userId);
-  const { data } = await http.post<ScanSession>('/scans/sessions', {
-    user_id: userId,
-    device_model: deviceModel,
-    app_version: appVersion,
-  });
+  const { data } = await coreHttp.post<ScanSession>(
+    '/scans/sessions',
+    {
+      device_model: deviceModel,
+      app_version: appVersion,
+    },
+    authConfig(requireCoreAccessToken())
+  );
   return data;
 }
 
@@ -165,42 +124,39 @@ export async function completeScanSession(
   sessionId: string,
   payload: ScanResultPayload
 ): Promise<ScanResult> {
-  const { data } = await http.put<ScanResult>(
+  const { data } = await coreHttp.put<ScanResult>(
     `/scans/sessions/${sessionId}/complete`,
-    payload
+    payload,
+    authConfig(requireCoreAccessToken())
   );
   return data;
 }
 
-export async function getScanSession(
-  sessionId: string,
-  userId?: string
-): Promise<ScanSessionWithResult> {
-  if (userId) {
-    await ensureAuthSession(userId);
-  }
-  const { data } = await http.get<ScanSessionWithResult>(`/scans/sessions/${sessionId}`);
+export async function getScanSession(sessionId: string): Promise<ScanSessionWithResult> {
+  const { data } = await coreHttp.get<ScanSessionWithResult>(
+    `/scans/sessions/${sessionId}`,
+    authConfig(requireCoreAccessToken())
+  );
   return data;
 }
 
 // ─── Feedback ────────────────────────────────────────────────────────────────
 
-export async function submitScanFeedback(
-  userId: string,
-  payload: ScanFeedbackPayload
-): Promise<ScanFeedback> {
-  await ensureAuthSession(userId);
-  const { data } = await http.post<ScanFeedback>('/feedback', payload);
+export async function submitScanFeedback(payload: ScanFeedbackPayload): Promise<ScanFeedback> {
+  const { data } = await coreHttp.post<ScanFeedback>(
+    '/feedback',
+    payload,
+    authConfig(requireCoreAccessToken())
+  );
   return data;
 }
 
-export async function getFeedbackForSession(
-  sessionId: string,
-  userId: string
-): Promise<ScanFeedback | null> {
-  await ensureAuthSession(userId);
+export async function getFeedbackForSession(sessionId: string): Promise<ScanFeedback | null> {
   try {
-    const { data } = await http.get<ScanFeedback>(`/feedback/sessions/${sessionId}`);
+    const { data } = await coreHttp.get<ScanFeedback>(
+      `/feedback/sessions/${sessionId}`,
+      authConfig(requireCoreAccessToken())
+    );
     return data;
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 404) {

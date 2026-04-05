@@ -52,7 +52,7 @@ March 23 – April 5, 2026 (planned) | Execution accelerated — all sprint stor
 
 ```
 python3 -m ruff check .          → All checks passed!
-DEBUG=false PYTHONPATH=backend python3 -m pytest -q
+DEBUG=false PYTHONPATH=service-intelligence python3 -m pytest -q
                                  → 252 passed, 186 warnings in 6.84s
 npx eslint src/ --ext .ts,.tsx   → (clean, no output)
 npx tsc --noEmit                 → (clean, no output)

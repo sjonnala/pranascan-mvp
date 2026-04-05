@@ -49,3 +49,6 @@ secrets/
 # DB
 *.db
 *.sqlite3
+
+# Java
+target/

@@ -4,7 +4,7 @@ _Local reference analysis based on the current pulled repo state and git history
 
 ## Scope and Method
 
-- Source of truth: checked-in code under `backend/`, `mobile/`, `agent/`, and migrations/tests.
+- Source of truth: checked-in code under `service-intelligence/`, `mobile/`, `agent/`, and migrations/tests.
 - Planning baseline: `docs/planning/prd.md`, `docs/architecture/overview.md`, `docs/planning/sprint-plan.md`, and sprint backlog/tracker docs.
 - History baseline: full `git log --reverse --stat`.
 - When docs and code disagree, this file treats the code as the source of truth.

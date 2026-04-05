@@ -40,13 +40,13 @@ This review does **not** claim completion for:
 
 | Area | Target | Evidence Source | Current State |
 |---|---|---|---|
-| Consent + privacy | Explicit opt-in, revocation, deletion path, audit trail | [backend/app/routers/consent.py](../../backend/app/routers/consent.py), [backend/app/routers/audit.py](../../backend/app/routers/audit.py) | Met in code |
-| Auth enforcement | Protected backend routes and mobile bearer-token flow | [backend/app/routers/auth.py](../../backend/app/routers/auth.py), [mobile/src/api/client.ts](../../mobile/src/api/client.ts) | Met in code |
+| Consent + privacy | Explicit opt-in, revocation, deletion path, audit trail | [service-intelligence/app/routers/consent.py](../../service-intelligence/app/routers/consent.py), [service-intelligence/app/routers/audit.py](../../service-intelligence/app/routers/audit.py) | Met in code |
+| Auth enforcement | Protected backend routes and mobile bearer-token flow | [service-intelligence/app/routers/auth.py](../../service-intelligence/app/routers/auth.py), [mobile/src/api/client.ts](../../mobile/src/api/client.ts) | Met in code |
 | Camera + voice capture | Real mobile capture path | [mobile/src/screens/ScanScreen.tsx](../../mobile/src/screens/ScanScreen.tsx), [mobile/src/components/VoiceCapture.tsx](../../mobile/src/components/VoiceCapture.tsx) | Met in code |
-| Trend engine | 3-scan baseline + 15% deviation rule | [backend/app/services/trend_engine.py](../../backend/app/services/trend_engine.py) | Met in code |
-| Alert/report delivery | Telegram + WhatsApp scaffolds | [backend/app/services/delivery_service.py](../../backend/app/services/delivery_service.py) | Partial; credentials still external |
-| Closed beta gate | Invite-based onboarding before consent | [backend/app/routers/beta.py](../../backend/app/routers/beta.py), [mobile/src/screens/BetaOnboardingScreen.tsx](../../mobile/src/screens/BetaOnboardingScreen.tsx) | Met in code |
-| Feedback loop | Post-scan usefulness + NPS | [backend/app/routers/feedback.py](../../backend/app/routers/feedback.py), [mobile/src/screens/ResultsScreen.tsx](../../mobile/src/screens/ResultsScreen.tsx) | Met in code |
+| Trend engine | 3-scan baseline + 15% deviation rule | [service-intelligence/app/services/trend_engine.py](../../service-intelligence/app/services/trend_engine.py) | Met in code |
+| Alert/report delivery | Telegram + WhatsApp scaffolds | [service-intelligence/app/services/delivery_service.py](../../service-intelligence/app/services/delivery_service.py) | Partial; credentials still external |
+| Closed beta gate | Invite-based onboarding before consent | [service-intelligence/app/routers/beta.py](../../service-intelligence/app/routers/beta.py), [mobile/src/screens/BetaOnboardingScreen.tsx](../../mobile/src/screens/BetaOnboardingScreen.tsx) | Met in code |
+| Feedback loop | Post-scan usefulness + NPS | [service-intelligence/app/routers/feedback.py](../../service-intelligence/app/routers/feedback.py), [mobile/src/screens/ResultsScreen.tsx](../../mobile/src/screens/ResultsScreen.tsx) | Met in code |
 | Accuracy validation | Bench evidence for HR/HRV | No checked-in benchmark dataset/results | Not met |
 | Skin-tone audit | Fitzpatrick 5-6 empirical evidence | No checked-in audit results | Not met |
 
@@ -56,7 +56,7 @@ Latest local engineering validation for the checked-in repo state:
 
 ```text
 python3 -m ruff check .                         → All checks passed!
-DEBUG=false PYTHONPATH=backend python3 -m pytest -q
+DEBUG=false PYTHONPATH=service-intelligence python3 -m pytest -q
                                                 → 252 passed, 186 warnings in 7.11s
 cd mobile && npx eslint src/ --ext .ts,.tsx    → clean
 cd mobile && npx tsc --noEmit                  → clean

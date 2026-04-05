@@ -4,14 +4,12 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
-import { grantConsent, getConsentStatus } from '../api/client';
+import { getConsentStatus, grantConsent } from '../api/client';
 import { ConsentStatus } from '../types';
-import { getOrCreateUserId } from '../utils/identity';
 
 const CONSENT_KEY = '@pranascan:consent_status';
 
 export interface UseConsentReturn {
-  userId: string | null;
   consentStatus: ConsentStatus | null;
   isLoading: boolean;
   error: string | null;
@@ -20,57 +18,53 @@ export interface UseConsentReturn {
 }
 
 export function useConsent(): UseConsentReturn {
-  const [userId, setUserId] = useState<string | null>(null);
   const [consentStatus, setConsentStatus] = useState<ConsentStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Load or generate user ID on mount
+  const refreshConsentStatus = useCallback(async () => {
+    try {
+      const status = await getConsentStatus();
+      setConsentStatus(status);
+      await AsyncStorage.setItem(CONSENT_KEY, JSON.stringify(status));
+      setError(null);
+    } catch {
+      const cached = await AsyncStorage.getItem(CONSENT_KEY);
+      if (cached) {
+        setConsentStatus(JSON.parse(cached) as ConsentStatus);
+      } else {
+        throw new Error('Consent status unavailable.');
+      }
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
-        const id = await getOrCreateUserId();
-        setUserId(id);
-
-        // Try to fetch latest consent status from server
-        try {
-          const status = await getConsentStatus(id);
-          setConsentStatus(status);
-          await AsyncStorage.setItem(CONSENT_KEY, JSON.stringify(status));
-        } catch {
-          // Fall back to cached status if offline
-          const cached = await AsyncStorage.getItem(CONSENT_KEY);
-          if (cached) {
-            setConsentStatus(JSON.parse(cached) as ConsentStatus);
-          }
-        }
-      } catch (e) {
+        await refreshConsentStatus();
+      } catch {
         setError('Failed to initialise consent state');
       } finally {
         setIsLoading(false);
       }
     })();
-  }, []);
+  }, [refreshConsentStatus]);
 
   const grantUserConsent = useCallback(async () => {
-    if (!userId) return;
     setIsLoading(true);
     setError(null);
     try {
-      await grantConsent(userId);
-      const status = await getConsentStatus(userId);
-      setConsentStatus(status);
-      await AsyncStorage.setItem(CONSENT_KEY, JSON.stringify(status));
-    } catch (e) {
+      await grantConsent();
+      await refreshConsentStatus();
+    } catch (error) {
       setError('Could not save your consent. Please check your connection and try again.');
-      throw e;
+      throw error;
     } finally {
       setIsLoading(false);
     }
-  }, [userId]);
+  }, [refreshConsentStatus]);
 
   return {
-    userId,
     consentStatus,
     isLoading,
     error,

@@ -4,8 +4,8 @@ PranaScan background agent — CLI entrypoint.
 
 Usage
 -----
-  # Direct mode (imports backend services, no HTTP server required):
-  PYTHONPATH=../backend python3 pranascan_agent.py
+  # Direct mode (imports service-intelligence modules, no HTTP server required):
+  PYTHONPATH=../service-intelligence python3 pranascan_agent.py
 
   # HTTP mode (calls POST /internal/agent/run; server must be running):
   python3 pranascan_agent.py --http --base-url http://localhost:8000 --secret <key>
@@ -14,7 +14,7 @@ Environment variables (direct mode):
   DATABASE_URL          SQLAlchemy async URL (default: sqlite+aiosqlite:///./pranascan_test.db)
   TELEGRAM_BOT_TOKEN    Optional — enables Telegram delivery
   TELEGRAM_CHAT_ID      Optional — Telegram chat to deliver to
-  AGENT_SECRET_KEY      Optional — matches backend config for HTTP mode
+  AGENT_SECRET_KEY      Optional — matches the service-intelligence config for HTTP mode
 
 Designed to be triggered by:
   - OpenClaw cron (weekly, via agentTurn or systemEvent payload)
@@ -44,17 +44,21 @@ log = logging.getLogger("pranascan_agent")
 
 
 # ---------------------------------------------------------------------------
-# Direct mode (imports backend directly)
+# Direct mode (imports service-intelligence directly)
 # ---------------------------------------------------------------------------
 
 
 async def _run_direct() -> int:
-    """Run the agent cycle by importing backend services directly."""
+    """Run the agent cycle by importing service-intelligence services directly."""
     try:
         from app.database import AsyncSessionLocal  # type: ignore[import]
         from app.services.agent_runner import run_agent_cycle  # type: ignore[import]
     except ImportError as exc:
-        log.error("Cannot import backend services. Set PYTHONPATH=../backend. Error: %s", exc)
+        log.error(
+            "Cannot import service-intelligence modules. "
+            "Set PYTHONPATH=../service-intelligence. Error: %s",
+            exc,
+        )
         return 1
 
     log.info("PranaScan agent starting (direct mode) at %s", datetime.now(tz=timezone.utc).isoformat())
@@ -149,7 +153,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--base-url",
         default=os.environ.get("PRANASCAN_BASE_URL", "http://localhost:8000"),
-        help="Backend base URL for HTTP mode (default: http://localhost:8000)",
+        help="Service intelligence base URL for HTTP mode (default: http://localhost:8000)",
     )
     parser.add_argument(
         "--secret",

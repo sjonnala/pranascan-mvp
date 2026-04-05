@@ -131,7 +131,7 @@ The `[API] Confirmed API surface` lists the following endpoints. For each, we as
 
 ### 2.5. Project Structure (FastAPI) - Status and Gaps
 
-*   **Status:** `backend/` directory is defined in `Project Structure`.
+*   **Status:** `service-intelligence/` directory is defined in `Project Structure`.
 *   **Audit Focus:**
     *   Verify a clear separation of concerns (e.g., `models/`, `schemas/`, `routers/`, `services/`, `dependencies/`, `database/`).
     *   Modularity for different functional areas (e.g., `consent/`, `scans/`, `audit/`).

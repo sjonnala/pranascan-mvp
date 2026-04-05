@@ -1,0 +1,37 @@
+spring:
+  datasource:
+    url: 'jdbc:h2:mem:service_core;MODE=PostgreSQL;INIT=CREATE SCHEMA IF NOT EXISTS core\;SET SCHEMA core;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE'
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  flyway:
+    enabled: false
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        default_schema: core
+
+app:
+  security:
+    issuer-uri: https://issuer.test/pranapulse
+    jwk-set-uri: https://issuer.test/pranapulse/jwks
+    required-audience: pranapulse-core-test
+  consent:
+    default-version: 1.0
+    deletion-hold-days: 30
+  intelligence:
+    internal-token: test-internal-service-token
+    grpc-host: localhost
+    grpc-port: 50051
+  trend:
+    lookback-days: 7
+    alert-threshold-pct: 15.0
+    min-baseline-scans: 3
+    cooldown-hours: 48
+
+grpc:
+  server:
+    port: 0

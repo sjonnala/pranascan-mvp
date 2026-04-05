@@ -65,20 +65,20 @@
 
 ### Backend
 
-- **`backend/app/models/beta.py`**
+- **`service-intelligence/app/models/beta.py`**
   - added `beta_invites` and `beta_enrollments` persistence models
-- **`backend/app/schemas/beta.py`**
+- **`service-intelligence/app/schemas/beta.py`**
   - added invite redeem and beta status contracts
-- **`backend/app/routers/beta.py`**
+- **`service-intelligence/app/routers/beta.py`**
   - added authenticated endpoints:
     - `GET /api/v1/beta/status`
     - `POST /api/v1/beta/redeem`
   - validates active, unexpired, under-capacity invite codes
   - keeps redeem idempotent for already-enrolled users
-- **`backend/app/main.py`**
+- **`service-intelligence/app/main.py`**
   - registers the beta router and beta models
   - seeds a reusable invite automatically when `BETA_SEED_INVITE_CODE` is configured for local/dev use
-- **`backend/migrations/versions/006_add_beta_onboarding.py`**
+- **`service-intelligence/alembic/versions/006_add_beta_onboarding.py`**
   - adds invite and enrollment tables
 
 ### Mobile
@@ -96,7 +96,7 @@
 
 ### Tests added / updated
 
-- **`backend/tests/test_beta.py`**
+- **`service-intelligence/tests/test_beta.py`**
   - disabled-feature status
   - successful enrollment
   - invalid, expired, and exhausted invite handling
@@ -118,14 +118,14 @@
 
 ### Backend
 
-- **`backend/app/config.py`**
+- **`service-intelligence/app/config.py`**
   - added feature-flagged WhatsApp Cloud API settings:
     - `whatsapp_enabled`
     - `whatsapp_access_token`
     - `whatsapp_phone_number_id`
     - `whatsapp_recipient_phone`
     - `whatsapp_api_version`
-- **`backend/app/services/delivery_service.py`**
+- **`service-intelligence/app/services/delivery_service.py`**
   - added `_whatsapp_configured()` guard
   - added `_send_whatsapp()` Cloud API transport
   - alerts now attempt WhatsApp delivery after log/webhook/Telegram when enabled
@@ -134,7 +134,7 @@
 
 ### Tests added / updated
 
-- **`backend/tests/test_delivery.py`**
+- **`service-intelligence/tests/test_delivery.py`**
   - alert delivery through WhatsApp
   - WhatsApp failure swallowing for alerts
   - feature-flag skip behavior
@@ -153,18 +153,18 @@
 
 ### Backend
 
-- **`backend/app/models/feedback.py`**
+- **`service-intelligence/app/models/feedback.py`**
   - new `scan_feedback` model with one record per completed scan session
-- **`backend/app/schemas/feedback.py`**
+- **`service-intelligence/app/schemas/feedback.py`**
   - request/response contracts for feedback submit + fetch
-- **`backend/app/routers/feedback.py`**
+- **`service-intelligence/app/routers/feedback.py`**
   - authenticated feedback endpoints:
     - `POST /api/v1/feedback`
     - `GET /api/v1/feedback/sessions/{session_id}`
   - enforces ownership, completed-session requirement, and one-feedback-per-session
-- **`backend/migrations/versions/005_add_scan_feedback.py`**
+- **`service-intelligence/alembic/versions/005_add_scan_feedback.py`**
   - migration for the feedback table
-- **`backend/app/main.py` and `backend/migrations/env.py`**
+- **`service-intelligence/app/main.py` and `service-intelligence/alembic/env.py`**
   - router/model registration
 
 ### Mobile
@@ -185,7 +185,7 @@
 
 ### Tests added / updated
 
-- **`backend/tests/test_feedback.py`**
+- **`service-intelligence/tests/test_feedback.py`**
   - create, duplicate rejection, completed-session enforcement, owner-only access, auth requirement
 - **`mobile/__tests__/ResultsScreen.test.tsx`**
   - feedback prompt render, submission flow, existing-feedback thank-you state
@@ -211,7 +211,7 @@
 
 ```text
 python3 -m ruff check .                         → All checks passed!
-DEBUG=false PYTHONPATH=backend python3 -m pytest -q
+DEBUG=false PYTHONPATH=service-intelligence python3 -m pytest -q
                                                 → 252 passed, 186 warnings in 6.84s
 cd mobile && npx eslint src/ --ext .ts,.tsx    → clean
 cd mobile && npx tsc --noEmit                  → clean

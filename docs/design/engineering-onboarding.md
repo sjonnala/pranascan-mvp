@@ -45,7 +45,7 @@ Read these in order:
 - backend
 
 It does not run the mobile app.
-It also references `backend/Dockerfile`, which is not currently present in the
+It also references `service-intelligence/Dockerfile`, which is not currently present in the
 repo, so treat compose as an intended path that still needs packaging cleanup.
 
 ## Local Setup
@@ -53,7 +53,7 @@ repo, so treat compose as an intended path that still needs packaging cleanup.
 ### Backend
 
 ```bash
-cd backend
+cd service-intelligence
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
@@ -81,7 +81,7 @@ docker compose up --build
 
 ```bash
 python3 -m ruff check .
-PYTHONPATH=backend python3 -m pytest -q
+PYTHONPATH=service-intelligence python3 -m pytest -q
 ```
 
 ### Mobile
@@ -144,25 +144,28 @@ GitHub Actions currently runs:
 
 ### Backend First
 
-- `backend/app/main.py`
-- `backend/app/config.py`
-- `backend/app/routers/*`
-- `backend/app/services/*`
-- `backend/app/models/*`
-- `backend/app/schemas/*`
-- `backend/tests/*`
+- `service-core/src/main/java/com/pranapulse/core/scan/*`
+- `service-core/src/main/java/com/pranapulse/core/consent/*`
+- `service-core/src/main/java/com/pranapulse/core/report/*`
+- `service-core/src/main/java/com/pranapulse/core/infrastructure/intelligence/*`
+- `service-intelligence/app/main.py`
+- `service-intelligence/app/grpc_runtime.py`
+- `service-intelligence/app/services/*`
+- `service-intelligence/tests/*`
 
 ## Recommended First Tasks For A New Engineer
 
 These are good starter tasks because they are high-signal and low ambiguity.
 
-1. Sync mobile `ScanResult` types and `ResultsScreen` with backend vascular-age
-   and anemia fields.
-2. Harden consent routes so `body.user_id` must match the authenticated subject.
-3. Populate `request.state.user_id` so audit rows can attribute the acting user.
-4. Decide whether the repo is officially edge-first now, then remove or clearly
-   quarantine stale fallback docs and comments.
-5. Centralize shared thresholds so mobile and backend cannot drift.
+1. Extend the gRPC scan-intelligence contract without leaking product-domain
+   concerns into `service-intelligence`.
+2. Tighten `service-core` integration tests around consent, scan completion,
+   and report generation.
+3. Decide whether the remaining shared database boundary should be redesigned
+   or kept as isolated schemas.
+4. Keep the design docs synchronized with the current core-versus-intelligence
+   ownership split.
+5. Centralize shared thresholds so mobile and server-side quality logic cannot drift.
 
 ## Common Gotchas
 
@@ -173,9 +176,9 @@ Use the code and the `docs/design/` set as your working reference.
 
 ### 2. Hybrid Signal Path
 
-The mobile app is now mostly edge-first, but the backend still supports
-server-side processing for `frame_data` and `audio_samples`.
-Be explicit about which path your change affects.
+The mobile app is primarily capture-first, while server-side intelligence still
+accepts `frame_data`, `audio_samples`, and raw media bytes for compute
+fallbacks. Be explicit about which path your change affects.
 
 ### 3. Threshold Changes Are Cross-Cutting
 
@@ -205,14 +208,20 @@ The test suite needs packages such as `pytest-asyncio`.
 
 ### 6. Mobile API Base URL
 
-The mobile client reads `EXPO_PUBLIC_API_URL` in `src/api/client.ts` and falls
-back to `http://localhost:8000`.
+The mobile client now reads `EXPO_PUBLIC_CORE_API_URL` for Spring-owned public
+APIs and falls back to `http://localhost:8080`. Mobile auth is now a real OIDC
+PKCE flow, so it also needs:
+
+- `EXPO_PUBLIC_OIDC_ISSUER`
+- `EXPO_PUBLIC_OIDC_CLIENT_ID`
+- `EXPO_PUBLIC_OIDC_AUDIENCE`
 
 That means:
 
-- the `app.json` `extra.apiBaseUrl` value is not the active runtime source
+- the `app.json` `extra.*ApiBaseUrl` values are not the active runtime source
 - `localhost` only works in a simulator that can reach the host machine
 - physical-device testing usually needs an explicit LAN URL
+- the app no longer accepts a manually injected core bearer token at runtime
 
 ## Practical Change Recipes
 

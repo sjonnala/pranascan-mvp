@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package pranapulse.intelligence.scan.v1;
+
+option java_multiple_files = true;
+option java_package = "com.pranapulse.intelligence.grpc.scan.v1";
+option java_outer_classname = "ScanIntelligenceProto";
+
+service ScanIntelligenceService {
+  rpc EvaluateScan (ScanEvaluationRequest) returns (ScanEvaluationResponse);
+}
+
+message FrameSample {
+  double t_ms = 1;
+  double r_mean = 2;
+  double g_mean = 3;
+  double b_mean = 4;
+}
+
+message ScanEvaluationRequest {
+  repeated FrameSample frame_data = 1;
+  repeated double audio_samples = 2;
+
+  oneof media_payload {
+    bytes image_bytes = 3;
+    bytes video_bytes = 4;
+  }
+
+  optional double hr_bpm = 5;
+  optional double hrv_ms = 6;
+  optional double respiratory_rate = 7;
+  optional double voice_jitter_pct = 8;
+  optional double voice_shimmer_pct = 9;
+  double quality_score = 10;
+  optional double lighting_score = 11;
+  optional double motion_score = 12;
+  optional double face_confidence = 13;
+  optional double audio_snr_db = 14;
+  repeated string flags = 15;
+  optional double frame_r_mean = 16;
+  optional double frame_g_mean = 17;
+  optional double frame_b_mean = 18;
+}
+
+message ScanEvaluationResponse {
+  optional double hr_bpm = 1;
+  optional double hrv_ms = 2;
+  optional double spo2 = 3;
+  optional double respiratory_rate = 4;
+  optional double voice_jitter_pct = 5;
+  optional double voice_shimmer_pct = 6;
+  double quality_score = 7;
+  optional double lighting_score = 8;
+  optional double motion_score = 9;
+  optional double face_confidence = 10;
+  optional double audio_snr_db = 11;
+  repeated string flags = 12;
+  repeated string warnings = 13;
+  bool quality_gate_passed = 14;
+  optional string rejection_reason = 15;
+  optional double vascular_age_estimate = 16;
+  optional double vascular_age_confidence = 17;
+  optional double hb_proxy_score = 18;
+  optional string anemia_wellness_label = 19;
+  optional double anemia_confidence = 20;
+}

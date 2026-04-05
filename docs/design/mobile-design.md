@@ -93,7 +93,7 @@ Responsibilities:
 
 ### Key Data Stored Locally
 
-- `@pranascan:user_id`
+- OIDC session material in secure storage
 - `@pranascan:consent_status`
 
 ## API Client And Auth Bootstrap
@@ -103,16 +103,16 @@ File: `mobile/src/api/client.ts`
 Responsibilities:
 
 - create a configured Axios instance
-- request access and refresh tokens from `/api/v1/auth/token`
+- attach the OIDC access token acquired through Expo AuthSession
 - keep the current auth session in memory
 - attach bearer tokens through an interceptor
 - wrap consent and scan endpoints in typed helpers
 
 ### Important Behavior
 
-- token bootstrap is per active pseudonymous `userId`
-- the client currently keeps auth state in memory only
-- token refresh logic is not yet implemented
+- auth bootstrap is handled by `mobile/src/hooks/useOidcAuth.ts`
+- `service-core` is the public backend for consent, scans, feedback, and reports
+- the old FastAPI `/auth/token` bootstrap path is no longer part of the mobile runtime
 
 ## Scan Orchestration
 

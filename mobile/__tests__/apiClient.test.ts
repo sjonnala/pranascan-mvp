@@ -1,8 +1,5 @@
 /**
- * Tests for mobile API auth wiring.
- *
- * These tests verify the mobile client requests a dev JWT when needed and
- * attaches the bearer token to protected requests.
+ * Tests for mobile API client auth wiring after the OIDC cutover.
  */
 
 jest.mock('axios');
@@ -22,7 +19,7 @@ describe('api client auth wiring', () => {
   let client: typeof import('../src/api/client');
 
   const applyRequestInterceptors = async (
-    config: Record<string, unknown>,
+    config: Record<string, unknown>
   ): Promise<Record<string, unknown>> => {
     let next = config;
     for (const interceptor of requestInterceptors) {
@@ -37,45 +34,18 @@ describe('api client auth wiring', () => {
     requestLog = [];
 
     const httpInstance = {
-      interceptors: {
-        request: {
-          use: jest.fn((interceptor) => {
-            requestInterceptors.push(interceptor);
-            return requestInterceptors.length;
-          }),
-          eject: jest.fn(),
-          clear: jest.fn(),
-        },
-      },
+      interceptors: { request: { use: jest.fn(), eject: jest.fn(), clear: jest.fn() } },
       post: jest.fn(async (url: string, data?: unknown, config: Record<string, unknown> = {}) => {
-        const finalConfig = await applyRequestInterceptors({
-          ...config,
-          url,
-          method: 'post',
-          data,
-          headers: { ...(config.headers as Record<string, string> | undefined) },
-        });
+        const finalConfig = await applyRequestInterceptors({ ...config, url, method: 'post', data });
 
         requestLog.push({ method: 'post', url, data, config: finalConfig });
 
-        if (url === '/auth/token') {
-          const userId = (data as { user_id: string }).user_id;
-          return {
-            data: {
-              access_token: `access-${userId}`,
-              refresh_token: `refresh-${userId}`,
-              token_type: 'bearer',
-              expires_in: 604800,
-            },
-          };
-        }
-
         if (url === '/consent') {
-          const body = data as { user_id: string; consent_version: string; purpose: string };
+          const body = data as { consent_version: string; purpose: string };
           return {
             data: {
               id: 'consent-1',
-              user_id: body.user_id,
+              user_id: 'core-user-123',
               action: 'granted',
               consent_version: body.consent_version,
               purpose: body.purpose,
@@ -84,12 +54,39 @@ describe('api client auth wiring', () => {
           };
         }
 
+        if (url === '/consent/revoke') {
+          return {
+            data: {
+              id: 'consent-2',
+              user_id: 'core-user-123',
+              action: 'revoked',
+              consent_version: '1.0',
+              purpose: 'wellness_screening',
+              created_at: '2026-03-09T00:00:00Z',
+            },
+          };
+        }
+
+        if (url === '/consent/deletion-request') {
+          return {
+            data: {
+              id: 'consent-3',
+              user_id: 'core-user-123',
+              action: 'deletion_requested',
+              consent_version: '1.0',
+              purpose: 'wellness_screening',
+              created_at: '2026-03-09T00:00:00Z',
+              deletion_scheduled_at: '2026-04-08T00:00:00Z',
+            },
+          };
+        }
+
         if (url === '/scans/sessions') {
-          const body = data as { user_id: string; device_model?: string; app_version?: string };
+          const body = data as { device_model?: string; app_version?: string };
           return {
             data: {
               id: 'session-1',
-              user_id: body.user_id,
+              user_id: 'core-user-123',
               status: 'initiated',
               device_model: body.device_model ?? null,
               app_version: body.app_version ?? null,
@@ -110,7 +107,7 @@ describe('api client auth wiring', () => {
             data: {
               id: 'feedback-1',
               session_id: body.session_id,
-              user_id: 'user-123',
+              user_id: 'core-user-123',
               useful_response: body.useful_response,
               nps_score: body.nps_score ?? null,
               comment: body.comment ?? null,
@@ -119,39 +116,50 @@ describe('api client auth wiring', () => {
           };
         }
 
-        if (url === '/beta/redeem') {
-          const body = data as { invite_code: string };
+        throw new Error(`Unhandled POST ${url}`);
+      }),
+      get: jest.fn(async (url: string, config: Record<string, unknown> = {}) => {
+        const finalConfig = await applyRequestInterceptors({ ...config, url, method: 'get' });
+
+        requestLog.push({ method: 'get', url, config: finalConfig });
+
+        if (url === '/auth/me') {
           return {
             data: {
-              user_id: 'user-123',
-              beta_onboarding_enabled: true,
-              enrolled: true,
-              invite_required: false,
-              cohort_name: 'remote_caregivers',
-              invite_code: body.invite_code.toUpperCase(),
-              enrolled_at: '2026-03-11T00:00:00Z',
+              id: 'core-user-123',
+              oidcSubject: 'oidc-user-123',
+              email: 'user@example.com',
+              displayName: 'Prana User',
+              phoneE164: null,
+              avatarUrl: null,
+              active: true,
+              lastLoginAt: '2026-03-09T00:00:00Z',
+              createdAt: '2026-03-01T00:00:00Z',
+              updatedAt: '2026-03-09T00:00:00Z',
             },
           };
         }
 
-        throw new Error(`Unhandled POST ${url}`);
-      }),
-      get: jest.fn(async (url: string, config: Record<string, unknown> = {}) => {
-        const finalConfig = await applyRequestInterceptors({
-          ...config,
-          url,
-          method: 'get',
-          headers: { ...(config.headers as Record<string, string> | undefined) },
-        });
-
-        requestLog.push({ method: 'get', url, config: finalConfig });
+        if (url === '/consent/status') {
+          return {
+            data: {
+              user_id: 'core-user-123',
+              has_active_consent: true,
+              consent_version: '1.0',
+              granted_at: '2026-03-09T00:00:00Z',
+              revoked_at: null,
+              deletion_requested: false,
+              deletion_scheduled_at: null,
+            },
+          };
+        }
 
         if (url.startsWith('/scans/sessions/')) {
           return {
             data: {
               session: {
                 id: 'session-1',
-                user_id: 'user-123',
+                user_id: 'core-user-123',
                 status: 'completed',
                 device_model: null,
                 app_version: null,
@@ -178,7 +186,7 @@ describe('api client auth wiring', () => {
             data: {
               id: 'feedback-1',
               session_id: 'session-1',
-              user_id: 'user-123',
+              user_id: 'core-user-123',
               useful_response: 'useful',
               nps_score: 8,
               comment: null,
@@ -187,30 +195,10 @@ describe('api client auth wiring', () => {
           };
         }
 
-        if (url === '/beta/status') {
-          return {
-            data: {
-              user_id: 'user-123',
-              beta_onboarding_enabled: true,
-              enrolled: false,
-              invite_required: true,
-              cohort_name: null,
-              invite_code: null,
-              enrolled_at: null,
-            },
-          };
-        }
-
         throw new Error(`Unhandled GET ${url}`);
       }),
       put: jest.fn(async (url: string, data?: unknown, config: Record<string, unknown> = {}) => {
-        const finalConfig = await applyRequestInterceptors({
-          ...config,
-          url,
-          method: 'put',
-          data,
-          headers: { ...(config.headers as Record<string, string> | undefined) },
-        });
+        const finalConfig = await applyRequestInterceptors({ ...config, url, method: 'put', data });
 
         requestLog.push({ method: 'put', url, data, config: finalConfig });
         throw new Error(`Unhandled PUT ${url}`);
@@ -225,93 +213,74 @@ describe('api client auth wiring', () => {
     axiosModule.isAxiosError = axiosModule.default.isAxiosError;
 
     client = jest.requireActual('../src/api/client') as typeof import('../src/api/client');
-    client.resetAuthSession();
+    client.configureCoreAccessToken(null);
   });
 
   afterEach(() => {
-    client.resetAuthSession();
+    client.configureCoreAccessToken(null);
   });
 
-  it('requests a token before granting consent and attaches a bearer token', async () => {
-    await client.grantConsent('user-123');
+  it('uses the configured core bearer token for auth profile lookups', async () => {
+    client.configureCoreAccessToken('core-token-123');
+    const user = await client.getCurrentUserProfile();
 
-    expect(requestLog.map((entry) => entry.url)).toEqual(['/auth/token', '/consent']);
-
-    const consentRequest = requestLog.find((entry) => entry.url === '/consent');
-    expect(consentRequest?.config.headers).toMatchObject({
-      Authorization: 'Bearer access-user-123',
+    expect(user.id).toBe('core-user-123');
+    expect(requestLog.map((entry) => entry.url)).toEqual(['/auth/me']);
+    expect(requestLog[0]?.config.headers).toMatchObject({
+      Authorization: 'Bearer core-token-123',
     });
   });
 
-  it('reuses the existing auth session for protected scan calls by the same user', async () => {
-    await client.createScanSession('user-123');
+  it('uses the configured core bearer token for consent routes', async () => {
+    client.configureCoreAccessToken('core-token-123');
+
+    await client.grantConsent();
+    await client.getConsentStatus();
+
+    expect(requestLog.map((entry) => entry.url)).toEqual(['/consent', '/consent/status']);
+    expect(requestLog[0]?.config.headers).toMatchObject({
+      Authorization: 'Bearer core-token-123',
+    });
+  });
+
+  it('uses the configured core bearer token for scan calls', async () => {
+    client.configureCoreAccessToken('core-token-123');
+
+    await client.createScanSession();
     await client.getScanSession('session-1');
 
-    const authRequests = requestLog.filter((entry) => entry.url === '/auth/token');
-    expect(authRequests).toHaveLength(1);
-
     const getSessionRequest = requestLog.find(
-      (entry) => entry.method === 'get' && entry.url === '/scans/sessions/session-1',
+      (entry) => entry.method === 'get' && entry.url === '/scans/sessions/session-1'
     );
     expect(getSessionRequest?.config.headers).toMatchObject({
-      Authorization: 'Bearer access-user-123',
+      Authorization: 'Bearer core-token-123',
     });
   });
 
-  it('requests a new token when the active mobile user changes', async () => {
-    await client.createScanSession('user-123');
-    await client.createScanSession('user-456');
-
-    const authRequests = requestLog.filter((entry) => entry.url === '/auth/token');
-    expect(authRequests).toHaveLength(2);
-    expect(authRequests.map((entry) => entry.data)).toEqual([
-      { user_id: 'user-123' },
-      { user_id: 'user-456' },
-    ]);
+  it('throws a clear error when a core token is not configured', async () => {
+    await expect(client.createScanSession()).rejects.toThrow(
+      'You are not authenticated. Sign in before using service-core APIs.'
+    );
   });
 
-  it('submits feedback with a bearer token for the active user', async () => {
-    await client.submitScanFeedback('user-123', {
+  it('uses the configured core bearer token for feedback routes', async () => {
+    client.configureCoreAccessToken('core-token-123');
+
+    await client.submitScanFeedback({
       session_id: 'session-1',
       useful_response: 'useful',
       nps_score: 8,
     });
 
-    expect(requestLog.map((entry) => entry.url)).toEqual(['/auth/token', '/feedback']);
-
-    const feedbackRequest = requestLog.find((entry) => entry.url === '/feedback');
-    expect(feedbackRequest?.config.headers).toMatchObject({
-      Authorization: 'Bearer access-user-123',
+    expect(requestLog.map((entry) => entry.url)).toEqual(['/feedback']);
+    expect(requestLog[0]?.config.headers).toMatchObject({
+      Authorization: 'Bearer core-token-123',
     });
   });
 
   it('returns null when feedback is not found for a session', async () => {
-    const feedback = await client.getFeedbackForSession('missing', 'user-123');
+    client.configureCoreAccessToken('core-token-123');
+    const feedback = await client.getFeedbackForSession('missing');
     expect(feedback).toBeNull();
-  });
-
-  it('requests beta status with a bearer token for the active user', async () => {
-    const status = await client.getBetaStatus('user-123');
-
-    expect(status.invite_required).toBe(true);
-    expect(requestLog.map((entry) => entry.url)).toEqual(['/auth/token', '/beta/status']);
-
-    const statusRequest = requestLog.find((entry) => entry.url === '/beta/status');
-    expect(statusRequest?.config.headers).toMatchObject({
-      Authorization: 'Bearer access-user-123',
-    });
-  });
-
-  it('redeems a beta invite with a bearer token for the active user', async () => {
-    const status = await client.redeemBetaInvite('user-123', { invite_code: 'closed50' });
-
-    expect(status.enrolled).toBe(true);
-    expect(status.invite_code).toBe('CLOSED50');
-    expect(requestLog.map((entry) => entry.url)).toEqual(['/auth/token', '/beta/redeem']);
-
-    const redeemRequest = requestLog.find((entry) => entry.url === '/beta/redeem');
-    expect(redeemRequest?.config.headers).toMatchObject({
-      Authorization: 'Bearer access-user-123',
-    });
   });
 });

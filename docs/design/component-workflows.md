@@ -2,71 +2,90 @@
 
 This document explains how the main components collaborate at runtime.
 
-## 1. Consent Workflow
+## 1. OIDC Login Workflow
 
 ### Components Involved
 
-- `mobile/App.tsx`
-- `mobile/src/screens/ConsentScreen.tsx`
-- `mobile/src/hooks/useConsent.ts`
+- `mobile/src/screens/AuthScreen.tsx`
+- `mobile/src/hooks/useOidcAuth.ts`
+- `mobile/src/auth/coreAuthSession.ts`
 - `mobile/src/api/client.ts`
-- `backend/app/routers/consent.py`
-- `backend/app/services/consent_service.py`
-- `backend/app/models/consent.py`
+- OIDC provider
+- `service-core`
 
 ### Sequence
 
 ```text
 App
-  -> ConsentScreen
-     -> useConsent
-        -> AsyncStorage: load or create user_id
-        -> GET /api/v1/consent/status
-        -> if already active: auto-advance to ScanScreen
+  -> AuthScreen
+     -> useOidcAuth.signIn()
+        -> Expo AuthSession PKCE flow
+        -> OIDC authorize endpoint
+        -> OIDC token exchange
+        -> secure-store access token
+        -> GET /api/v1/auth/me on service-core
+  -> App transitions to consent or scan flow
+```
+
+### Important Behavior
+
+- Mobile no longer bootstraps a local `user_id`.
+- Mobile no longer calls legacy FastAPI OTP/JWT auth paths.
+- `service-core` accepts only OIDC-issued bearer tokens with the configured audience.
+
+## 2. Consent Workflow
+
+### Components Involved
+
+- `mobile/src/screens/ConsentScreen.tsx`
+- `mobile/src/hooks/useConsent.ts`
+- `mobile/src/api/client.ts`
+- `service-core` consent endpoints
+
+### Sequence
+
+```text
+ConsentScreen mount
+  -> GET /api/v1/consent/status on service-core
+  -> if already active: advance to ScanScreen
 
 User taps "I Agree"
-  -> useConsent.grantUserConsent()
-     -> POST /api/v1/auth/token
-     -> POST /api/v1/consent
-     -> GET /api/v1/consent/status
-     -> cache consent status in AsyncStorage
+  -> POST /api/v1/consent on service-core
+  -> GET /api/v1/consent/status
   -> App transitions to ScanScreen
 ```
 
 ### Important Behavior
 
-- Consent status is persisted locally so the app can recover gracefully.
-- The backend stores consent as an append-only ledger.
-- Active consent is derived from the latest meaningful consent action.
-- Deletion requests are modeled as a consent-ledger event with a scheduled date.
+- Consent is core-owned and derived from the authenticated subject.
+- Consent status is still cached locally for UX recovery, not for authority.
 
-## 2. Scan Session Workflow
+## 3. Scan Session Workflow
 
 ### Components Involved
 
 - `mobile/src/screens/ScanScreen.tsx`
 - `mobile/src/hooks/useScan.ts`
 - `mobile/src/api/client.ts`
-- `backend/app/routers/scan.py`
-- `backend/app/models/scan.py`
+- `service-core` scan endpoints
 
 ### Sequence
 
 ```text
 ScanScreen mount
-  -> useScan.startScan(userId)
-     -> POST /api/v1/scans/sessions
-     -> backend returns session_id
+  -> useScan.startScan()
+     -> POST /api/v1/scans/sessions on service-core
+     -> service-core returns session_id
   -> UI enters camera step
 ```
 
 ### Backend Responsibilities During Session Creation
 
-- Requires active consent
-- Ignores spoofable `user_id` in the request body and uses the authenticated subject
-- Persists a `scan_sessions` row with status `initiated`
+- Requires active core-owned consent
+- Derives the user from the bearer token
+- Persists a core-owned `scan_sessions` row with status `initiated`
 
-## 3. Camera Workflow
+## 4. Camera Workflow
 
 ### Components Involved
 
@@ -101,16 +120,16 @@ CameraCapture.startScan()
 - aggregate RGB means:
   - `frame_r_mean`
   - `frame_g_mean`
-  - `frame_b_mean`
+- `frame_b_mean`
 
 ### Quality Feedback Loop
 
 - `CameraCapture` emits `QualityMetrics`
 - `useQualityCheck` converts metrics into flags and overall score
 - `QualityGate` renders real-time pass/fail cues
-- The backend re-evaluates the submitted quality metadata before persisting
+- `service-core` forwards the submitted metrics to `service-intelligence` for server-side validation before persisting
 
-## 4. Voice Workflow
+## 5. Voice Workflow
 
 ### Components Involved
 
@@ -145,19 +164,21 @@ VoiceCapture.startRecording()
 The current mobile flow does not send `audio_samples` to the backend. It sends
 only derived scalar indicators.
 
-The backend still supports `audio_samples` for legacy or compatibility clients.
+The intelligence contract still supports `audio_samples` and raw media bytes as
+optional compute inputs.
 
-## 5. Result Submission Workflow
+## 6. Result Submission Workflow
 
 ### Components Involved
 
 - `mobile/src/screens/ScanScreen.tsx`
 - `mobile/src/hooks/useScan.ts`
-- `backend/app/routers/scan.py`
-- backend services:
+- `service-core` scan controller/service
+- `service-intelligence/app/grpc_runtime.py`
+- compute helpers:
   - `quality_gate.py`
-  - `trend_engine.py`
-  - `delivery_service.py`
+  - `rppg_processor.py`
+  - `voice_processor.py`
   - `vascular_age.py`
   - `anemia_screen.py`
 
@@ -168,104 +189,81 @@ ScanScreen.handleVoiceComplete()
   -> merges CameraResult + VoiceResult
   -> evaluates final quality flags
   -> builds ScanResultPayload
-  -> submits payload via PUT /api/v1/scans/sessions/{id}/complete
+  -> submits payload via PUT /api/v1/scans/sessions/{id}/complete on service-core
 
-Backend complete_scan_session()
+service-core completeScan()
   -> load session and verify ownership
-  -> optional server-side rPPG fallback if frame_data present
-  -> optional server-side voice DSP fallback if audio_samples present
-  -> quality gate
-  -> trend baseline evaluation
-  -> cooldown suppression
-  -> alert delivery stub
-  -> vascular-age heuristic
-  -> anemia-screening heuristic
-  -> persist ScanResult
+  -> call ScanIntelligenceService/EvaluateScan over gRPC
+  -> service-intelligence runs quality gate + compute heuristics
+  -> service-core persists ScanResult
+  -> service-core updates trend/history/report views
   -> mark session completed
-  -> return result
+  -> return core-owned result
 ```
 
-## 6. Results Workflow
+## 7. Results Workflow
 
 ### Components Involved
 
 - `mobile/src/screens/ResultsScreen.tsx`
 - `mobile/src/api/client.ts`
-- `backend/app/routers/scan.py`
+- `service-core` scan/report endpoints
 
 ### Sequence
 
 ```text
 ResultsScreen mount
-  -> GET /api/v1/scans/sessions/{id}
+  -> GET /api/v1/scans/sessions/{id} on service-core
   -> render result cards
-  -> show trend notice if trend_alert == consider_lab_followup
+  -> optionally fetch history/report views from service-core
 ```
 
-### Important Current Limitation
-
-The backend response includes additional fields such as:
-
-- `vascular_age_estimate`
-- `vascular_age_confidence`
-- `hb_proxy_score`
-- `anemia_wellness_label`
-- `anemia_confidence`
-
-The current mobile `ScanResult` TypeScript type and `ResultsScreen` do not yet
-render those fields.
-
-## 7. Trend Alert Workflow
+## 8. Intelligence Compute Workflow
 
 ### Components Involved
 
-- `backend/app/services/trend_engine.py`
-- `backend/app/services/delivery_service.py`
-- `backend/app/routers/scan.py`
+- `service-core/src/main/java/com/pranapulse/core/infrastructure/intelligence/GrpcIntelligenceServiceGateway.java`
+- `service-intelligence/app/grpc_runtime.py`
+- `service-intelligence/app/services/scan_evaluation_service.py`
 
 ### Sequence
 
 ```text
-Current scan arrives
-  -> compute prior 7-day per-metric averages
-  -> require at least 3 prior samples per metric
-  -> compute absolute deviation percentage
-  -> if any tracked metric deviates >= 15%:
-       trend_alert = consider_lab_followup
-  -> check cooldown window
-  -> suppress if recent alert already exists
-  -> if still active:
-       deliver alert via structured log
-       optionally POST to configured webhook
+service-core
+  -> open gRPC channel to service-intelligence
+  -> send EvaluateScan request with x-internal-service-token metadata
+
+service-intelligence
+  -> validate internal token
+  -> derive vitals from raw media bytes when present
+  -> optionally use frame_data/audio_samples fallback paths
+  -> run quality gate
+  -> compute vascular-age and anemia heuristics
+  -> return compute-only response to service-core
 ```
 
-### Metrics Currently Tracked By Trend Engine
-
-- `hr_bpm`
-- `hrv_ms`
-- `respiratory_rate`
-- `voice_jitter_pct`
-- `voice_shimmer_pct`
-
-## 8. Audit Workflow
+## 9. Audit Workflow
 
 ### Components Involved
 
-- `backend/app/middleware/audit_log.py`
-- `backend/app/models/audit.py`
-- `backend/app/routers/audit.py`
+- `service-core` audit endpoints and request logging
+- `service-intelligence/app/middleware/audit_log.py`
+- `service-intelligence/app/models/audit.py`
 
 ### Sequence
 
 ```text
-Any request except /health, /, /api/v1/audit/*
+Mobile request to service-core
+  -> core request logged to core audit trail
+  -> if scan evaluation needed, core calls service-intelligence over gRPC
+
+Operational HTTP request to service-intelligence (/ or /health)
   -> request handled normally
-  -> middleware writes audit row after response
+  -> audit middleware writes best-effort audit row
   -> failures in audit logging are swallowed
 ```
 
 ### Important Caveat
 
-The middleware currently reads `request.state.user_id`, but the auth dependency
-does not populate that field. New engineers should treat user attribution in
-the audit log as incomplete until that is fixed.
+`service-intelligence` audit rows are operational, not end-user product truth.
+The authoritative audit surface is the core-owned audit model in `service-core`.

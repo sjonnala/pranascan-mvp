@@ -53,7 +53,7 @@ Source of truth: docs/planning/sprint-2.1-backlog.md
 
 **Raw check outputs:**
 - `python3 -m ruff check .` → All checks passed!
-- `PYTHONPATH=backend python3 -m pytest -q backend/tests` → 59 passed in 1.68s
+- `PYTHONPATH=service-intelligence python3 -m pytest -q service-intelligence/tests` → 59 passed in 1.68s
 - `npx eslint src/ --ext .ts,.tsx && npx tsc --noEmit && npm test` → Test Suites: 4 passed | Tests: 46 passed
 
 **Blockers:** None

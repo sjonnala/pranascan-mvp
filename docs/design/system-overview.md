@@ -129,40 +129,40 @@ The important onboarding takeaway is this:
 
 ### Backend
 
-- App bootstrap: `backend/app/main.py`
-- Config: `backend/app/config.py`
-- DB session and models: `backend/app/database.py`, `backend/app/models/*`
-- Routers: `backend/app/routers/*`
-- Middleware: `backend/app/middleware/*`
-- Services: `backend/app/services/*`
-- Migrations: `backend/migrations/*`
+- Public API and persistence: `service-core/*`
+- Core scan/intelligence gateway:
+  `service-core/src/main/java/com/pranapulse/core/infrastructure/intelligence/*`
+- Intelligence app bootstrap: `service-intelligence/app/main.py`
+- Intelligence gRPC server: `service-intelligence/app/grpc_runtime.py`
+- Intelligence middleware and services:
+  `service-intelligence/app/middleware/*`,
+  `service-intelligence/app/services/*`
+- Intelligence migrations: `service-intelligence/alembic/*`
 
 ## Current End-To-End Flow
 
 ### Happy Path
 
-1. Mobile bootstraps or loads a pseudonymous `user_id`.
-2. User grants consent.
-3. Mobile requests a JWT token for that `user_id`.
-4. Mobile creates a scan session.
-5. Camera step captures frames, derives quality metrics, and runs on-device rPPG.
-6. Voice step records audio, derives SNR and runs on-device voice DSP.
-7. Mobile submits scalar wellness indicators plus quality metadata.
-8. Backend validates quality, computes trend state, cooldown, alert delivery,
-   vascular age, and anemia heuristics.
-9. Backend persists the scan result.
-10. Mobile fetches and renders the result.
+1. Mobile completes OIDC login and stores the core access token.
+2. User grants consent through `service-core`.
+3. Mobile creates a scan session through `service-core`.
+4. Camera step captures frames, derives quality metrics, and runs on-device rPPG.
+5. Voice step records audio, derives SNR, and runs on-device voice DSP.
+6. Mobile submits scalar wellness indicators plus optional raw media data.
+7. `service-core` calls `service-intelligence` over gRPC for `EvaluateScan`.
+8. `service-intelligence` validates quality and computes derived heuristics.
+9. `service-core` persists the result, trend state, and related product history.
+10. Mobile fetches and renders the core-owned result.
 
 ### Alternate Or Legacy Path
 
-The backend still accepts:
+The intelligence contract still accepts:
 
 - `frame_data` for server-side rPPG
 - `audio_samples` for server-side voice DSP
 
-This means future clients, old clients, or debugging tools can still use the
-backend processing path even though the current mobile path is primarily
-edge-first.
+This means future clients or debugging tools can still use server-side compute
+fallbacks even though the current mobile path is primarily capture-first.
 
 ## Architectural Facts A New Engineer Should Know
 
@@ -172,16 +172,15 @@ The mobile app depends on React Navigation packages, but the runtime shell in
 `mobile/App.tsx` currently uses a local screen state machine instead of a
 navigation stack.
 
-### The backend owns all persistence and historical logic
+### `service-core` owns persistence and history
 
-Mobile owns capture and first-pass processing. Backend owns:
+Mobile owns capture and authentication UX. `service-core` owns:
 
 - consent state
 - audit trail
 - scan session lifecycle
 - long-term scan history
 - trend baselines
-- delivery stubs
 - vascular-age heuristic
 - anemia heuristic
 
@@ -199,12 +198,9 @@ These design docs are intended to bridge that gap for onboarding.
 
 These are not theoretical gaps. They matter to engineers starting work now.
 
-- The mobile UI does not currently render backend vascular-age or anemia fields.
-- The audit middleware checks `request.state.user_id`, but the current auth path
-  does not populate it, so audit rows may not reliably record the acting user.
-- Consent routes require auth but currently use the `user_id` from the request
-  body rather than enforcing that it matches the authenticated subject.
-- The project still carries both edge-first and backend-fallback processing
+- The project still carries both capture-first and server-side fallback compute
   modes, so engineers need to be explicit about which path they are changing.
-- Trend alerting, cooldown, and webhook delivery exist in code, but some status
-  docs still describe them as incomplete.
+- The remaining shared database boundary is a transition area even though
+  ownership has moved to `service-core`.
+- Historical status and handoff docs still describe earlier FastAPI public API
+  phases; treat them as archive material, not live design truth.

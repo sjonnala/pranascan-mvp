@@ -15,7 +15,6 @@ import { useConsent } from '../src/hooks/useConsent';
 const mockUseConsent = useConsent as jest.MockedFunction<typeof useConsent>;
 
 const baseConsentState = {
-  userId: 'test-user-id',
   consentStatus: null,
   isLoading: false,
   error: null,
@@ -57,7 +56,7 @@ describe('ConsentScreen', () => {
     await waitFor(() => {
       expect(baseConsentState.grantUserConsent).toHaveBeenCalledTimes(1);
     });
-    expect(onGranted).toHaveBeenCalledWith('test-user-id');
+    expect(onGranted).toHaveBeenCalledTimes(1);
   });
 
   it('auto-advances when user already has active consent', () => {
@@ -67,7 +66,7 @@ describe('ConsentScreen', () => {
       hasActiveConsent: true,
     });
     render(<ConsentScreen onConsentGranted={onGranted} />);
-    expect(onGranted).toHaveBeenCalledWith('test-user-id');
+    expect(onGranted).toHaveBeenCalledTimes(1);
   });
 
   it('shows loading indicator while initialising', () => {

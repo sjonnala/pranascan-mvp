@@ -1,15 +1,9 @@
 /**
  * useScan hook — orchestrates the full scan flow.
- *
- * Sequence:
- *   1. createScanSession (backend)
- *   2. Run camera + voice capture (on-device)
- *   3. completeScanSession (backend) — submits metrics only, no raw media
- *   4. Returns wellness indicator result
  */
 
 import { useCallback, useState } from 'react';
-import { createScanSession, completeScanSession, getScanSession } from '../api/client';
+import { completeScanSession, createScanSession, getScanSession } from '../api/client';
 import { ScanResult, ScanResultPayload, ScanSessionWithResult } from '../types';
 
 interface ScanErrorDetail {
@@ -31,7 +25,7 @@ export interface UseScanReturn {
   sessionId: string | null;
   result: ScanResult | null;
   error: string | null;
-  startScan: (userId: string) => Promise<string>;
+  startScan: () => Promise<string>;
   submitResults: (payload: ScanResultPayload) => Promise<ScanResult>;
   fetchResult: (sessionId: string) => Promise<ScanSessionWithResult>;
   setPhase: (phase: ScanPhase) => void;
@@ -44,36 +38,40 @@ export function useScan(): UseScanReturn {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const startScan = useCallback(async (userId: string): Promise<string> => {
+  const startScan = useCallback(async (): Promise<string> => {
     setPhase('creating_session');
     setError(null);
     try {
-      const session = await createScanSession(userId);
+      const session = await createScanSession();
       setSessionId(session.id);
       setPhase('camera');
       return session.id;
-    } catch (e) {
-      const msg = 'Could not start scan session. Please check your connection.';
-      setError(msg);
+    } catch {
+      const message = 'Could not start scan session. Please check your connection.';
+      setError(message);
       setPhase('error');
-      throw new Error(msg);
+      throw new Error(message);
     }
   }, []);
 
   const submitResults = useCallback(
     async (payload: ScanResultPayload): Promise<ScanResult> => {
-      if (!sessionId) throw new Error('No active session');
+      if (!sessionId) {
+        throw new Error('No active session');
+      }
+
       setPhase('submitting');
       setError(null);
+
       try {
         const scanResult = await completeScanSession(sessionId, payload);
         setResult(scanResult);
         setPhase('complete');
         return scanResult;
-      } catch (e: unknown) {
-        const axiosErr = e as { response?: { data?: { detail?: string | ScanErrorDetail } } };
-        const detail = axiosErr?.response?.data?.detail;
-        const msg =
+      } catch (error: unknown) {
+        const axiosError = error as { response?: { data?: { detail?: string | ScanErrorDetail } } };
+        const detail = axiosError?.response?.data?.detail;
+        const message =
           typeof detail === 'object' && detail?.rejection_reason
             ? detail.rejection_reason
             : typeof detail === 'object' && detail?.message
@@ -81,9 +79,9 @@ export function useScan(): UseScanReturn {
               : typeof detail === 'string'
                 ? detail
                 : 'Scan could not be processed. Please ensure good lighting and minimal movement.';
-        setError(msg);
+        setError(message);
         setPhase('error');
-        throw new Error(msg);
+        throw new Error(message);
       }
     },
     [sessionId]

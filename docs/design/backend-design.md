@@ -2,378 +2,123 @@
 
 ## Backend Role
 
-The backend is the system of record for all persisted application state.
-Even when the mobile app performs signal processing locally, the backend still
-owns:
+The repo now uses a split backend with clear ownership:
 
-- authentication
-- consent ledger
-- scan session lifecycle
-- scan result persistence
-- quality enforcement
-- trend baselines and alert evaluation
-- cooldown logic
-- alert delivery stub
-- vascular-age heuristic
-- anemia-screening heuristic
-- audit trail
+- `service-core` is the public backend and system of record.
+- `service-intelligence` is an internal compute service behind gRPC.
+
+`service-core` owns:
+
+- OIDC/JWT verification and authenticated user projection
+- consent/privacy workflows
+- scan session lifecycle and result persistence
+- trend history, reporting, feedback, and audit
+
+`service-intelligence` owns:
+
+- rPPG and voice-derived compute helpers
+- quality gating
+- vascular-age and anemia heuristics
+- the internal `ScanIntelligenceService/EvaluateScan` contract
+- operational HTTP health/root endpoints plus lightweight audit logging
 
 ## Technology Stack
 
-- FastAPI
-- SQLAlchemy 2 async
-- Alembic
-- PostgreSQL in docker and CI
-- SQLite in test fixtures
-- JWT via `python-jose`
+- `service-core`: Spring Boot 3.x, Java 21, Spring Security, Spring Data JPA, Flyway
+- `service-intelligence`: FastAPI, SQLAlchemy 2 async, Alembic, gRPC Python
+- Shared PostgreSQL with isolated schemas during migration
+- OIDC for mobile-to-core auth
+- gRPC for core-to-intelligence compute calls
 
-## Backend Directory Map
+## Directory Map
 
-### App Bootstrap
+### Service Core
 
-- `backend/app/main.py`
-- `backend/app/config.py`
-- `backend/app/database.py`
+- `service-core/src/main/java/com/pranapulse/core/auth`
+- `service-core/src/main/java/com/pranapulse/core/consent`
+- `service-core/src/main/java/com/pranapulse/core/scan`
+- `service-core/src/main/java/com/pranapulse/core/report`
+- `service-core/src/main/java/com/pranapulse/core/audit`
+- `service-core/src/main/java/com/pranapulse/core/infrastructure/intelligence`
 
-### Routers
+### Service Intelligence
 
-- `backend/app/routers/auth.py`
-- `backend/app/routers/consent.py`
-- `backend/app/routers/scan.py`
-- `backend/app/routers/audit.py`
+- `service-intelligence/app/main.py`
+- `service-intelligence/app/grpc_runtime.py`
+- `service-intelligence/app/config.py`
+- `service-intelligence/app/database.py`
+- `service-intelligence/app/middleware/audit_log.py`
+- `service-intelligence/app/services/quality_gate.py`
+- `service-intelligence/app/services/rppg_processor.py`
+- `service-intelligence/app/services/voice_processor.py`
+- `service-intelligence/app/services/vitals_extraction.py`
+- `service-intelligence/app/services/vascular_age.py`
+- `service-intelligence/app/services/anemia_screen.py`
+- `service-intelligence/app/services/scan_evaluation_service.py`
 
-### Middleware
+## Runtime Bootstrap
 
-- `backend/app/middleware/auth.py`
-- `backend/app/middleware/audit_log.py`
-- `backend/app/middleware/timing.py`
+### Service Core
 
-### Services
+`service-core` starts the public REST API, validates JWTs from the configured
+OIDC issuer, applies Flyway migrations for the `core` schema, and calls
+`service-intelligence` over gRPC for scan evaluation.
 
-- `auth_service.py`
-- `consent_service.py`
-- `quality_gate.py`
-- `rppg_processor.py`
-- `voice_processor.py`
-- `trend_engine.py`
-- `delivery_service.py`
-- `vascular_age.py`
-- `anemia_screen.py`
-- `audit_service.py`
+### Service Intelligence
 
-### Models And Schemas
+`service-intelligence/app/main.py` starts a small FastAPI app with:
 
-- models:
-  - `audit.py`
-  - `consent.py`
-  - `scan.py`
-- schemas:
-  - `auth.py`
-  - `consent.py`
-  - `scan.py`
-  - `audit.py`
+- `/`
+- `/health`
+- audit logging middleware
+- a lifespan hook that can auto-create tables only for throwaway local setups
+- a background gRPC server serving `ScanIntelligenceService`
 
-## Application Bootstrap
+The FastAPI runtime no longer mounts public auth, consent, scan, report, or
+feedback routers.
 
-### Startup
+## Data Ownership
 
-`backend/app/main.py` configures:
+Persisted product truth belongs in `service-core`:
 
-- FastAPI app metadata and disclaimer
-- CORS
-- timing middleware
-- audit middleware
-- router registration under `/api/v1`
-- a startup lifespan hook
+- users
+- consent ledger
+- scan sessions and scan results
+- social graph and streaks
+- feedback
+- reports
+- audit records
 
-### Lifespan Behavior
+`service-intelligence` persistence is now limited to operational concerns such
+as its HTTP audit middleware and any future compute-side technical metadata.
 
-The default schema-management path is Alembic migrations across environments.
+## Extension Points
 
-`create_all_tables()` remains available only as an explicit local escape hatch
-when `AUTO_CREATE_TABLES=true` is set for a throwaway database.
+Add new product-facing features to `service-core` when they require:
 
-## Middleware Order
+- authenticated mobile access
+- new tables in the core domain
+- user-visible reporting or history
+- policy or consent checks
 
-Current middleware layering in `main.py`:
+Add new compute features to `service-intelligence` when they are:
 
-1. `CORSMiddleware`
-2. `TimingMiddleware`
-3. `audit_log_middleware` via `BaseHTTPMiddleware`
+- pure signal-processing or scoring logic
+- model-serving or heuristic steps
+- internal-only helpers for `EvaluateScan`
 
-### Timing Middleware
+## Notes For Contributors
 
-Responsibilities:
-
-- measures request duration
-- adds `X-Process-Time-Ms`
-- logs slow requests relative to `settings.latency_target_ms`
-
-### Audit Middleware
-
-Responsibilities:
-
-- logs nearly every request/response cycle to `audit_logs`
-- skips `/`, `/health`, and `/api/v1/audit/*`
-- never blocks the main request if audit persistence fails
-
-Known issue:
-
-- user attribution is incomplete because the request state is not currently
-  populated by the auth dependency.
-
-## Router Responsibilities
-
-### `/auth`
-
-File: `backend/app/routers/auth.py`
-
-Endpoints:
-
-- `POST /auth/token`
-- `POST /auth/refresh`
-- `GET /auth/me`
-
-Purpose:
-
-- create access and refresh tokens
-- decode the acting subject
-
-Current model:
-
-- development-style token issuance based on `user_id`
-- no password, OTP, or identity proof yet
-
-### `/consent`
-
-File: `backend/app/routers/consent.py`
-
-Endpoints:
-
-- `POST /consent`
-- `POST /consent/revoke`
-- `POST /consent/deletion-request`
-- `GET /consent/status`
-
-Purpose:
-
-- append consent events
-- compute current consent state
-
-Important caveat:
-
-- the write routes require auth but currently rely on `body.user_id`
-  rather than enforcing a strict match to the authenticated subject
-
-### `/scans`
-
-File: `backend/app/routers/scan.py`
-
-Endpoints:
-
-- `POST /scans/sessions`
-- `PUT /scans/sessions/{id}/complete`
-- `GET /scans/sessions/{id}`
-- `GET /scans/history`
-
-Purpose:
-
-- create scan sessions
-- accept final scan payloads
-- compute derived backend-only heuristics
-- persist results
-- provide retrieval and history views
-
-### `/audit`
-
-File: `backend/app/routers/audit.py`
-
-Endpoint:
-
-- `GET /audit/logs`
-
-Purpose:
-
-- read-only access to immutable audit data
-
-## Scan Completion Pipeline
-
-`complete_scan_session()` is the most important backend flow.
-
-### Step 1. Load And Validate Session
-
-- session must exist
-- session must belong to authenticated user
-- session must still be `initiated`
-
-### Step 2. Optional Server-Side rPPG
-
-If `frame_data` is present:
-
-- backend builds frame samples
-- runs `process_frames()`
-- overrides incoming HR, HRV, and respiratory rate if extraction succeeds
-
-This path exists for compatibility and fallback.
-
-### Step 3. Optional Server-Side Voice DSP
-
-If `audio_samples` is present:
-
-- backend normalizes samples
-- runs `process_audio()`
-- may override incoming voice jitter, shimmer, and SNR
-
-This path also exists for compatibility and fallback.
-
-### Step 4. Quality Gate
-
-`run_quality_gate()` rejects the scan if thresholds fail.
-
-If rejected:
-
-- session becomes `rejected`
-- no `ScanResult` is written
-- response returns `422`
-
-### Step 5. Trend Engine
-
-The trend engine:
-
-- builds prior 7-day metric averages
-- requires at least 3 prior values per metric
-- evaluates deviation against a 15% threshold
-- returns only `consider_lab_followup` or `None`
-
-### Step 6. Cooldown And Delivery
-
-If a trend alert would fire:
-
-- the router checks for recent prior alerts in the cooldown window
-- if cooldown is active, the alert is suppressed
-- if not suppressed, `deliver_alert()` is called
-
-Current delivery implementation:
-
-- always logs a structured alert event
-- optionally POSTs to `settings.alert_webhook_url`
-- never blocks the scan if webhook delivery fails
-
-### Step 7. Secondary Heuristics
-
-The router then computes:
-
-- vascular-age estimate from HR and HRV
-- anemia-screening wellness label from aggregate RGB means and environment confidence
-
-These values are persisted in `scan_results`.
-
-### Step 8. Persistence
-
-The router creates a `ScanResult`, updates the `ScanSession` to `completed`,
-sets `completed_at`, flushes, refreshes, and returns the typed response model.
-
-## Persistence Model
-
-### `consent_records`
-
-Purpose:
-
-- append-only ledger of consent actions
-
-Important fields:
-
-- `user_id`
-- `action`
-- `consent_version`
-- `purpose`
-- `created_at`
-- `deletion_scheduled_at`
-- `deleted_at`
-
-### `scan_sessions`
-
-Purpose:
-
-- lifecycle wrapper around a single scan attempt
-
-Important fields:
-
-- `id`
-- `user_id`
-- `status`
-- `device_model`
-- `app_version`
-- `created_at`
-- `completed_at`
-
-### `scan_results`
-
-Purpose:
-
-- immutable metric snapshot associated to exactly one session
-
-Important fields:
-
-- wellness metrics:
-  - `hr_bpm`
-  - `hrv_ms`
-  - `respiratory_rate`
-  - `voice_jitter_pct`
-  - `voice_shimmer_pct`
-- quality:
-  - `quality_score`
-  - `lighting_score`
-  - `motion_score`
-  - `face_confidence`
-  - `audio_snr_db`
-- workflow and reasoning:
-  - `flags`
-  - `trend_alert`
-- secondary heuristics:
-  - `vascular_age_estimate`
-  - `vascular_age_confidence`
-  - `hb_proxy_score`
-  - `anemia_wellness_label`
-  - `anemia_confidence`
-
-### `audit_logs`
-
-Purpose:
-
-- append-only operational record of request activity
-
-Important fields:
-
-- `user_id`
-- `action`
-- `http_method`
-- `http_path`
-- `http_status`
-- `duration_ms`
-- `ip_address`
-- `user_agent`
-- `detail`
-
-## DB Session Pattern
-
-`get_db()` yields an async session and commits automatically after the request
-dependency returns successfully.
-
-This means router code usually:
-
-- adds rows
-- flushes
-- refreshes
-- returns
-
-The dependency then commits at the end of the request.
-
-## Test Architecture
+- If you are looking for public product APIs, start in `service-core`, not in
+  `service-intelligence`.
+- If you need to change scan compute behavior, follow the `EvaluateScan`
+  request/response contract first and then update the matching core gateway.
+- The remaining FastAPI database objects are no longer the source of truth for
+  users, consent, scan history, reports, or feedback.
 
 ### Local Test Pattern
 
-`backend/tests/conftest.py` provides:
+`service-intelligence/tests/conftest.py` provides:
 
 - in-memory SQLite database
 - per-test schema creation and teardown

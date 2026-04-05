@@ -39,7 +39,7 @@ Total: 34 SP
 1. Code implemented and documented.
 2. All checks pass with raw command output captured:
    - `python3 -m ruff check .`
-   - `PYTHONPATH=backend python3 -m pytest -q backend/tests`
+   - `PYTHONPATH=service-intelligence python3 -m pytest -q service-intelligence/tests`
    - `cd mobile && npm ci && npx eslint src/ --ext .ts,.tsx && npx tsc --noEmit && npm test -- --watchAll=false`
 3. `docs/status/daily-status.md` updated with progress/blockers.
 4. Commit created after passing checks.

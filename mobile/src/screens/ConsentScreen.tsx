@@ -1,8 +1,5 @@
 /**
  * ConsentScreen — informed consent flow.
- *
- * Users must explicitly agree before any wellness scan can begin.
- * Written in plain language — no legalese.
  */
 
 import React, { useState } from 'react';
@@ -17,27 +14,29 @@ import {
 import { useConsent } from '../hooks/useConsent';
 
 interface ConsentScreenProps {
-  onConsentGranted: (userId: string) => void;
+  onConsentGranted: () => void;
 }
 
 export function ConsentScreen({ onConsentGranted }: ConsentScreenProps) {
-  const { userId, isLoading, error, grantUserConsent, hasActiveConsent } = useConsent();
+  const { isLoading, error, grantUserConsent, hasActiveConsent } = useConsent();
   const [checked, setChecked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // If consent is already active (returning user), auto-advance
   React.useEffect(() => {
-    if (hasActiveConsent && userId) {
-      onConsentGranted(userId);
+    if (hasActiveConsent) {
+      onConsentGranted();
     }
-  }, [hasActiveConsent, userId, onConsentGranted]);
+  }, [hasActiveConsent, onConsentGranted]);
 
   const handleAgree = async () => {
-    if (!checked || !userId) return;
+    if (!checked) {
+      return;
+    }
+
     setSubmitting(true);
     try {
       await grantUserConsent();
-      onConsentGranted(userId);
+      onConsentGranted();
     } catch {
       // error shown via hook
     } finally {
@@ -95,21 +94,21 @@ export function ConsentScreen({ onConsentGranted }: ConsentScreenProps) {
         </Text>
       </View>
 
-      {error && (
+      {error ? (
         <View style={styles.errorBox} testID="consent-error">
           <Text style={styles.errorText}>{error}</Text>
         </View>
-      )}
+      ) : null}
 
       <TouchableOpacity
         style={styles.checkRow}
-        onPress={() => setChecked((c) => !c)}
+        onPress={() => setChecked((current) => !current)}
         testID="consent-checkbox"
         accessibilityRole="checkbox"
         accessibilityState={{ checked }}
       >
         <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-          {checked && <Text style={styles.checkmark}>✓</Text>}
+          {checked ? <Text style={styles.checkmark}>✓</Text> : null}
         </View>
         <Text style={styles.checkLabel}>
           I understand that PranaScan provides wellness indicators only — not medical advice — and I

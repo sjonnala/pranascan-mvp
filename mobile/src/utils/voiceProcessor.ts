@@ -5,7 +5,7 @@
  * shimmer_pct scalars are submitted to the backend — audio samples never
  * leave the device.
  *
- * Mirrors the logic from backend/app/services/voice_processor.py.
+ * Mirrors the logic from service-intelligence/app/services/voice_processor.py.
  */
 
 import { filtfiltHP, filtfiltLP, findPeaks } from './rppgProcessor';

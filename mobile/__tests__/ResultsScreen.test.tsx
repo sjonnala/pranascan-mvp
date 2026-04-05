@@ -59,7 +59,7 @@ describe('ResultsScreen feedback instrumentation', () => {
     });
 
     const { getByTestId, findByTestId, queryByTestId } = render(
-      <ResultsScreen sessionId="session-1" userId="user-123" onScanAgain={jest.fn()} />
+      <ResultsScreen sessionId="session-1" onScanAgain={jest.fn()} />
     );
 
     expect(await findByTestId('feedback-card')).toBeTruthy();
@@ -70,7 +70,7 @@ describe('ResultsScreen feedback instrumentation', () => {
     fireEvent.press(getByTestId('feedback-submit'));
 
     await waitFor(() => {
-      expect(submitScanFeedback).toHaveBeenCalledWith('user-123', {
+      expect(submitScanFeedback).toHaveBeenCalledWith({
         session_id: 'session-1',
         useful_response: 'needs_work',
         nps_score: 7,
@@ -94,7 +94,7 @@ describe('ResultsScreen feedback instrumentation', () => {
     });
 
     const { findByTestId, queryByTestId } = render(
-      <ResultsScreen sessionId="session-1" userId="user-123" onScanAgain={jest.fn()} />
+      <ResultsScreen sessionId="session-1" onScanAgain={jest.fn()} />
     );
 
     expect(await findByTestId('feedback-thanks')).toBeTruthy();

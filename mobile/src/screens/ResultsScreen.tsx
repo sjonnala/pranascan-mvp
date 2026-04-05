@@ -45,13 +45,12 @@ function MetricCard({ label, value, unit, description, testID }: MetricCardProps
 
 interface ResultsScreenProps {
   sessionId: string;
-  userId: string;
   onScanAgain: () => void;
 }
 
 const NPS_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-export function ResultsScreen({ sessionId, userId, onScanAgain }: ResultsScreenProps) {
+export function ResultsScreen({ sessionId, onScanAgain }: ResultsScreenProps) {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [feedback, setFeedback] = useState<ScanFeedback | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -68,8 +67,8 @@ export function ResultsScreen({ sessionId, userId, onScanAgain }: ResultsScreenP
     (async () => {
       try {
         const [sessionData, existingFeedback] = await Promise.all([
-          getScanSession(sessionId, userId),
-          getFeedbackForSession(sessionId, userId),
+          getScanSession(sessionId),
+          getFeedbackForSession(sessionId),
         ]);
 
         if (!isMounted) {
@@ -92,7 +91,7 @@ export function ResultsScreen({ sessionId, userId, onScanAgain }: ResultsScreenP
     return () => {
       isMounted = false;
     };
-  }, [sessionId, userId]);
+  }, [sessionId]);
 
   const handleSubmitFeedback = async () => {
     if (!usefulResponse || isSubmittingFeedback) {
@@ -103,7 +102,7 @@ export function ResultsScreen({ sessionId, userId, onScanAgain }: ResultsScreenP
     setIsSubmittingFeedback(true);
 
     try {
-      const created = await submitScanFeedback(userId, {
+      const created = await submitScanFeedback({
         session_id: sessionId,
         useful_response: usefulResponse,
         nps_score: npsScore ?? undefined,

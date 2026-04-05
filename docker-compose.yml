@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16-alpine
@@ -18,24 +16,45 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
+  service-intelligence:
     build:
-      context: ./backend
+      context: ./service-intelligence
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://pranascan:pranascan_dev_password@db:5432/pranascan
-      SECRET_KEY: dev-secret-key-change-in-production
+      INTERNAL_SERVICE_TOKEN: ${APP_INTELLIGENCE_INTERNAL_TOKEN:-dev-internal-service-token}
       ENVIRONMENT: development
-      LOG_LEVEL: info
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
     volumes:
-      - ./backend:/app
+      - ./service-intelligence:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  service-core:
+    build:
+      context: ./service-core
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      CORE_DB_URL: jdbc:postgresql://db:5432/pranascan?currentSchema=core
+      CORE_DB_USERNAME: pranascan
+      CORE_DB_PASSWORD: pranascan_dev_password
+      APP_INTELLIGENCE_INTERNAL_TOKEN: ${APP_INTELLIGENCE_INTERNAL_TOKEN:-dev-internal-service-token}
+      APP_INTELLIGENCE_GRPC_HOST: service-intelligence
+      APP_INTELLIGENCE_GRPC_PORT: 50051
+      APP_SECURITY_ISSUER_URI: ${APP_SECURITY_ISSUER_URI:-http://host.containers.internal:8081/realms/pranapulse}
+      APP_SECURITY_JWK_SET_URI: ${APP_SECURITY_JWK_SET_URI:-http://host.containers.internal:8081/realms/pranapulse/protocol/openid-connect/certs}
+      APP_SECURITY_REQUIRED_AUDIENCE: ${APP_SECURITY_REQUIRED_AUDIENCE:-pranapulse-core}
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   postgres_data:

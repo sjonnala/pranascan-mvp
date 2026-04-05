@@ -3,8 +3,8 @@
 ## S1 — Project Scaffolding & CI
 
 **Acceptance criteria:**
-- Monorepo structure with `mobile/`, `backend/`, `docs/`, `.github/`
-- `docker-compose.yml` boots Postgres + backend
+- Monorepo structure with `mobile/`, `service-intelligence/`, `docs/`, `.github/`
+- `docker-compose.yml` boots Postgres + service-intelligence
 - CI runs lint + tests on push/PR
 
 ## S2 — Consent & Privacy Flow (Backend)

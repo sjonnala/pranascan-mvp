@@ -7,7 +7,7 @@ Got both. Building the plan now.
 **Goal:** Ship a functional, privacy-compliant, clinically-grounded health selfie screening MVP in 30 days — rPPG vitals + vocal biomarker analysis + agentic trend monitoring.
 
 **Assumptions:**
-- Small cross-functional team: 1 ML engineer, 1 mobile dev, 1 backend/infra, 1 product/design, 1 compliance lead (part-time)
+- Small cross-functional team: 1 ML engineer, 1 mobile dev, 1 service-intelligence/infra, 1 product/design, 1 compliance lead (part-time)
 - React Native or Flutter for mobile; Python/FastAPI for backend metadata layer
 - ABDM sandbox credentials available by Day 3
 - Diverse-rPPG 2026 reference dataset licensed or accessible

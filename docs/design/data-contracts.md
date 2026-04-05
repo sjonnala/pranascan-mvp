@@ -2,14 +2,13 @@
 
 ## API Surface
 
-All backend routes are mounted under `/api/v1`.
+Public product routes are mounted under `service-core` at `/api/v1`.
+Internal compute routes are exposed from `service-intelligence` over gRPC.
 
-## Authentication Endpoints
+## Core Authentication Endpoint
 
 | Method | Path | Auth Required | Purpose |
 | --- | --- | --- | --- |
-| POST | `/auth/token` | No | Issue access and refresh tokens for a `user_id` |
-| POST | `/auth/refresh` | No | Exchange refresh token for a new pair |
 | GET | `/auth/me` | Yes | Return authenticated subject |
 
 ## Consent Endpoints
@@ -19,7 +18,7 @@ All backend routes are mounted under `/api/v1`.
 | POST | `/consent` | Yes | Append a granted-consent record |
 | POST | `/consent/revoke` | Yes | Append a revoke record |
 | POST | `/consent/deletion-request` | Yes | Append a deletion-request record |
-| GET | `/consent/status` | No | Compute current consent state for a `user_id` |
+| GET | `/consent/status` | Yes | Compute current consent state for the authenticated subject |
 
 ## Scan Endpoints
 
@@ -36,19 +35,50 @@ All backend routes are mounted under `/api/v1`.
 | --- | --- | --- | --- |
 | GET | `/audit/logs` | Yes | Paginated immutable audit-log listing |
 
+## Internal Intelligence gRPC Contract
+
+Service: `pranapulse.intelligence.scan.v1.ScanIntelligenceService`
+
+Method:
+
+- `EvaluateScan`
+
+Request fields:
+
+- scalar metrics such as `hr_bpm`, `hrv_ms`, `respiratory_rate`
+- quality inputs such as `quality_score`, `lighting_score`, `motion_score`,
+  `face_confidence`, `audio_snr_db`
+- optional fallback inputs:
+  - `frame_data`
+  - `audio_samples`
+  - `image_bytes`
+  - `video_bytes`
+- aggregate RGB means:
+  - `frame_r_mean`
+  - `frame_g_mean`
+  - `frame_b_mean`
+
+Response fields:
+
+- quality-gate decision and flags
+- main vitals and voice metrics
+- `spo2`
+- vascular-age outputs
+- anemia heuristic outputs
+- optional rejection reason
+
 ## Core Request Models
 
 ### `ScanSessionCreateRequest`
 
 Fields:
 
-- `user_id`
 - `device_model`
 - `app_version`
 
 Behavior:
 
-- scan creation ignores the body `user_id` and uses the authenticated subject
+- scan creation derives the user from the authenticated subject
 
 ### `ScanResultSubmit`
 
@@ -78,12 +108,13 @@ Primary fields:
 
 ### `ScanResultResponse`
 
-Current backend response includes:
+Current core response includes:
 
 - all main wellness metrics
 - `quality_score`
 - `flags`
 - `trend_alert`
+- `spo2`
 - `vascular_age_estimate`
 - `vascular_age_confidence`
 - `hb_proxy_score`
@@ -97,8 +128,8 @@ Current backend response includes:
 
 The current mobile app typically submits:
 
-- final scalar vitals from on-device rPPG
-- final scalar voice metrics from on-device voice DSP
+- final scalar vitals from on-device processing
+- final scalar voice metrics from on-device DSP
 - quality metadata
 - aggregate RGB means for anemia heuristics
 
@@ -107,14 +138,15 @@ It typically omits:
 - `frame_data`
 - `audio_samples`
 
-### Backward-Compatible Backend Path
+### Fallback Compute Path
 
-The backend still supports:
+The internal intelligence contract still supports:
 
 - `frame_data` for server-side rPPG
 - `audio_samples` for server-side voice DSP
+- `image_bytes` and `video_bytes` for raw media ingestion
 
-This is why both edge-first and fallback processing code paths currently exist.
+This is why both capture-first and server-side fallback compute paths currently exist.
 
 ## Consent Data Model
 
@@ -230,7 +262,7 @@ Important columns:
 
 | Data Type | Mobile Storage | Network | Backend Storage |
 | --- | --- | --- | --- |
-| Pseudonymous user ID | AsyncStorage | Yes | Yes |
+| OIDC access token | SecureStore | Yes | No |
 | Consent state cache | AsyncStorage | Yes | Yes |
 | Raw video | In-memory during scan | No in current main path | No |
 | Raw audio | In-memory during scan | No in current main path | No |
@@ -241,18 +273,13 @@ Important columns:
 
 ## Contract Mismatches New Engineers Should Notice
 
-### Backend Richer Than Mobile Types
+### Core Richer Than Some Mobile Views
 
-Backend returns vascular-age and anemia-screening fields.
-Current mobile `ScanResult` TypeScript type does not model them.
+`service-core` returns vascular-age, anemia-screening, and `spo2` fields.
+Make sure mobile result types stay synchronized with the rendered UI.
 
 ### Hybrid Signal-Processing Contract
 
-The backend schemas still expose `frame_data` and `audio_samples`, but the
-current mobile flow largely submits already-processed scalar indicators.
-
-### Consent Auth Contract
-
-Consent write routes require auth, but the current router implementation
-does not strictly enforce that the request-body `user_id` matches the token
-subject. Treat that as a known security-hardening gap.
+The intelligence contract still exposes `frame_data`, `audio_samples`, and raw
+media bytes, but the current mobile flow largely submits already-processed
+scalar indicators.

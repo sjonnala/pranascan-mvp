@@ -7,12 +7,12 @@ on:
     branches: [main, develop]
 
 jobs:
-  backend-lint:
-    name: Backend — Lint & Format
+  service-intelligence-lint:
+    name: Service Intelligence — Lint & Format
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: service-intelligence
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -23,8 +23,8 @@ jobs:
       - run: ruff check app/
       - run: black --check app/
 
-  backend-test:
-    name: Backend — Pytest
+  service-intelligence-test:
+    name: Service Intelligence — Pytest
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -42,7 +42,7 @@ jobs:
           --health-retries 5
     defaults:
       run:
-        working-directory: backend
+        working-directory: service-intelligence
     env:
       DATABASE_URL: postgresql+asyncpg://pranascan:testpassword@localhost:5432/pranascan_test
       SECRET_KEY: test-secret-key-ci
@@ -58,7 +58,7 @@ jobs:
       - uses: codecov/codecov-action@v4
         if: always()
         with:
-          files: backend/coverage.xml
+          files: service-intelligence/coverage.xml
 
   mobile-lint:
     name: Mobile — ESLint & TypeScript

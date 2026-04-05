@@ -1,0 +1,2 @@
+ALTER TABLE core.scan_results
+    ADD COLUMN spo2 DOUBLE PRECISION;

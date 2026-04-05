@@ -26,6 +26,7 @@ Project docs are grouped by purpose so planning, status, setup, and design mater
 ## Recommended Entry Points
 
 - Start here for local setup: [setup/local-podman-postgres-setup.md](setup/local-podman-postgres-setup.md)
+- Use this for local OIDC/Keycloak setup: [setup/local-oidc-keycloak-setup.md](setup/local-oidc-keycloak-setup.md)
 - Read this for current architecture: [architecture/overview.md](architecture/overview.md)
 - Read this for current design docs: [design/README.md](design/README.md)
 - Read this for current project status: [status/project-status.md](status/project-status.md)

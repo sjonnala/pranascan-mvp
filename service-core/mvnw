@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ -f "$HOME/.bash_profile" ]]; then
+    # Reuse the user's Maven installation and PATH customizations without
+    # changing the global default JAVA_HOME outside this process.
+    # shellcheck disable=SC1090
+    set +e +u
+    source "$HOME/.bash_profile" >/dev/null 2>&1 || true
+    set -euo pipefail
+fi
+
+find_java_home() {
+    local requested_version="$1"
+    /usr/libexec/java_home -v "$requested_version" 2>/dev/null || return 1
+}
+
+select_java_home() {
+    if java_home="$(find_java_home 21)"; then
+        printf '%s\n' "$java_home"
+        return 0
+    fi
+
+    local candidate
+    for candidate in 24 23 22; do
+        if java_home="$(find_java_home "$candidate")"; then
+            printf '%s\n' "$java_home"
+            return 0
+        fi
+    done
+
+    cat >&2 <<'EOF'
+service-core requires Java 21+.
+No compatible JDK was found via /usr/libexec/java_home.
+Install JDK 21 to run this module with its intended project-local runtime.
+EOF
+    return 1
+}
+
+JAVA_HOME="$(select_java_home)"
+export JAVA_HOME
+export PATH="$JAVA_HOME/bin:$PATH"
+
+if ! command -v mvn >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+Maven is not available on PATH after sourcing ~/.bash_profile.
+Install Maven or expose it in your shell configuration, then rerun ./mvnw.
+EOF
+    exit 1
+fi
+
+exec mvn "$@"

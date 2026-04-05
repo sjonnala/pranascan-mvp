@@ -2,6 +2,7 @@
   "expo": {
     "name": "PranaScan",
     "slug": "pranascan",
+    "scheme": "pranascan",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -33,10 +34,14 @@
           "microphonePermission": "PranaScan uses your microphone for a 5-second voice wellness check. No audio is stored."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "extra": {
-      "apiBaseUrl": "http://localhost:8000"
+      "coreApiBaseUrl": "http://localhost:8080",
+      "oidcIssuer": "http://localhost:8081/realms/pranapulse",
+      "oidcClientId": "pranapulse-mobile",
+      "oidcAudience": "pranapulse-core"
     }
   }
 }
