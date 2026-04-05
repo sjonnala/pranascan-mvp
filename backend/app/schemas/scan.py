@@ -16,7 +16,7 @@ class FrameSampleSchema(BaseModel):
 
 
 class ScanSessionCreateRequest(BaseModel):
-    user_id: str = Field(..., description="Pseudonymous user UUID")
+    user_id: str = Field(..., description="Pseudonymous user UUID; must match the authenticated subject.")
     device_model: str | None = Field(default=None, max_length=128)
     app_version: str | None = Field(default=None, max_length=32)
 

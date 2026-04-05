@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.middleware.auth import require_auth
+from app.middleware.auth import enforce_self_scope, require_auth
 from app.schemas.consent import (
     ConsentDeletionRequest,
     ConsentGrantRequest,
@@ -30,17 +30,18 @@ async def grant_consent(
     body: ConsentGrantRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    _user_id: str = Depends(require_auth),
+    auth_user_id: str = Depends(require_auth),
 ) -> ConsentRecordResponse:
     """
     Record informed consent for wellness screening.
 
     Consent records are append-only — previous records are never modified.
     """
+    user_id = enforce_self_scope(auth_user_id, body.user_id)
     ip, ua = _extract_client_info(request)
     record = await consent_service.grant_consent(
         db,
-        user_id=body.user_id,
+        user_id=user_id,
         consent_version=body.consent_version,
         purpose=body.purpose,
         ip_address=body.ip_address or ip,
@@ -54,15 +55,16 @@ async def revoke_consent(
     body: ConsentRevokeRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    _user_id: str = Depends(require_auth),
+    auth_user_id: str = Depends(require_auth),
 ) -> ConsentRecordResponse:
     """
     Revoke consent. Appends a revocation record; does not delete prior records.
     """
+    user_id = enforce_self_scope(auth_user_id, body.user_id)
     ip, ua = _extract_client_info(request)
     record = await consent_service.revoke_consent(
         db,
-        user_id=body.user_id,
+        user_id=user_id,
         ip_address=ip,
         user_agent=ua,
     )
@@ -78,15 +80,16 @@ async def request_deletion(
     body: ConsentDeletionRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    _user_id: str = Depends(require_auth),
+    auth_user_id: str = Depends(require_auth),
 ) -> ConsentRecordResponse:
     """
     Request data deletion. Data will be soft-deleted after a 30-day legal hold period.
     """
+    user_id = enforce_self_scope(auth_user_id, body.user_id)
     ip, ua = _extract_client_info(request)
     record = await consent_service.request_deletion(
         db,
-        user_id=body.user_id,
+        user_id=user_id,
         ip_address=ip,
         user_agent=ua,
     )
@@ -95,11 +98,13 @@ async def request_deletion(
 
 @router.get("/status", response_model=ConsentStatusResponse)
 async def get_consent_status(
-    user_id: str,
+    user_id: str | None = None,
     db: AsyncSession = Depends(get_db),
+    auth_user_id: str = Depends(require_auth),
 ) -> ConsentStatusResponse:
     """
     Get current consent status for a user.
     Computes status from the append-only consent ledger.
     """
-    return await consent_service.get_consent_status(db, user_id)
+    effective_user_id = enforce_self_scope(auth_user_id, user_id)
+    return await consent_service.get_consent_status(db, effective_user_id)

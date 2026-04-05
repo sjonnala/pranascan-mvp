@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.database import Base, get_db
 from app.main import app
+from app.middleware import audit_log as audit_log_module
+from app.models import register_models
 from app.services.auth_service import create_access_token
 
 # Use an in-memory SQLite database for tests
@@ -25,6 +27,7 @@ TestSessionLocal = async_sessionmaker(
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def setup_database():
     """Create all tables before each test, drop after."""
+    register_models()
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
@@ -51,11 +54,14 @@ async def client(db_session: AsyncSession):
             await db_session.rollback()
             raise
 
+    original_audit_session_local = audit_log_module.AsyncSessionLocal
+    audit_log_module.AsyncSessionLocal = TestSessionLocal
     app.dependency_overrides[get_db] = override_get_db
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+    audit_log_module.AsyncSessionLocal = original_audit_session_local
 
 
 # Helpers

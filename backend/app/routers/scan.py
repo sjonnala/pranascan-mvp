@@ -1,16 +1,10 @@
 """Scan Session API router."""
 
-from datetime import datetime, timedelta, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
-from sqlalchemy import func as sql_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.database import get_db
-from app.middleware.auth import require_auth
-from app.models.scan import ScanResult, ScanSession, SessionStatus
+from app.middleware.auth import enforce_self_scope, require_auth
 from app.schemas.scan import (
     ScanHistoryItem,
     ScanHistoryResponse,
@@ -20,21 +14,17 @@ from app.schemas.scan import (
     ScanSessionResponse,
     ScanSessionWithResult,
 )
-from app.services import consent_service
-from app.services.anemia_screen import screen_anemia
-from app.services.delivery_service import deliver_alert
-from app.services.quality_gate import run_quality_gate
-from app.services.rppg_processor import build_frame_samples, process_frames
-from app.services.skin_tone import apply_skin_tone_calibration
-from app.services.trend_engine import (
-    TrendBaseline,
-    baselines_from_row,
-    build_cooldown_check_query,
-    build_trend_baseline_query,
-    compute_trend_alert,
+from app.services.scan_service import (
+    ScanServiceError,
+    get_scan_history_page,
+    get_scan_session_with_result,
 )
-from app.services.vascular_age import estimate_vascular_age
-from app.services.voice_processor import build_audio_samples, process_audio
+from app.services.scan_service import (
+    complete_scan_session as complete_scan_session_workflow,
+)
+from app.services.scan_service import (
+    create_scan_session as create_scan_session_workflow,
+)
 
 router = APIRouter(prefix="/scans", tags=["Scans"])
 
@@ -45,45 +35,16 @@ async def create_scan_session(
     db: AsyncSession = Depends(get_db),
     auth_user_id: str = Depends(require_auth),
 ) -> ScanSessionResponse:
-    """
-    Initiate a new scan session.
-    Requires active consent — returns 403 if not consented.
-    """
-    # Use authenticated user_id; ignore any user_id in body to prevent spoofing
-    user_id = auth_user_id
-
-    if not await consent_service.has_active_consent(db, user_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Active consent required to start a scan session. Please grant consent first.",
+    user_id = enforce_self_scope(auth_user_id, body.user_id)
+    try:
+        session = await create_scan_session_workflow(
+            db,
+            user_id=user_id,
+            device_model=body.device_model,
+            app_version=body.app_version,
         )
-
-    # Rate limit: max N scan sessions per user per hour
-    one_hour_ago = datetime.now(tz=timezone.utc) - timedelta(hours=1)
-    rate_count_stmt = select(sql_func.count(ScanSession.id)).where(
-        ScanSession.user_id == user_id,
-        ScanSession.created_at >= one_hour_ago,
-    )
-    rate_result = await db.execute(rate_count_stmt)
-    session_count_this_hour = rate_result.scalar_one()
-    if session_count_this_hour >= settings.scan_rate_limit_per_hour:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=(
-                f"Rate limit exceeded: maximum {settings.scan_rate_limit_per_hour} "
-                "scans per hour. Please try again later."
-            ),
-        )
-
-    session = ScanSession(
-        user_id=user_id,
-        device_model=body.device_model,
-        app_version=body.app_version,
-        status=SessionStatus.INITIATED,
-    )
-    db.add(session)
-    await db.flush()
-    await db.refresh(session)
+    except ScanServiceError as exc:
+        _raise_http_for_scan_service_error(exc)
     return ScanSessionResponse.model_validate(session)
 
 
@@ -98,167 +59,15 @@ async def complete_scan_session(
     db: AsyncSession = Depends(get_db),
     auth_user_id: str = Depends(require_auth),
 ) -> ScanResultResponse:
-    """
-    Submit wellness indicator results for a scan session.
-
-    Runs quality gate validation. If any threshold fails,
-    the session is marked REJECTED and a 422 is returned.
-
-    Raw video/audio must NOT be submitted here — edge processing only.
-    """
-    # Fetch session
-    stmt = select(ScanSession).where(ScanSession.id == session_id)
-    result = await db.execute(stmt)
-    session = result.scalar_one_or_none()
-
-    if session is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-
-    # Ensure authenticated user owns this session
-    if session.user_id != auth_user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Session not found")
-
-    if session.status != SessionStatus.INITIATED:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Session is already in status '{session.status}'",
+    try:
+        scan_result = await complete_scan_session_workflow(
+            db,
+            session_id=session_id,
+            auth_user_id=auth_user_id,
+            submission=body,
         )
-
-    # -------------------------------------------------------------------
-    # Server-side rPPG processing (if frame_data provided)
-    # -------------------------------------------------------------------
-    rppg_flags: list[str] = []
-    if body.frame_data:
-        frames = build_frame_samples([f.model_dump() for f in body.frame_data])
-        rppg = process_frames(frames)
-
-        # Apply skin tone calibration (Fitzpatrick Types 3–6 / Diverse-rPPG 2026)
-        rppg, _skin_cal = apply_skin_tone_calibration(rppg, frames)
-
-        rppg_flags = rppg.flags  # propagated into result flags below
-
-        if rppg.hr_bpm is not None:
-            body = body.model_copy(
-                update={
-                    "hr_bpm": rppg.hr_bpm,
-                    "hrv_ms": rppg.hrv_ms,
-                    "respiratory_rate": rppg.respiratory_rate,
-                    # rPPG quality score reflects spectral quality of the signal
-                    # post skin-tone calibration; take max so a high camera
-                    # quality_score isn't overwritten by a quiet signal.
-                    "quality_score": max(body.quality_score, rppg.quality_score),
-                }
-            )
-        # If rPPG failed to extract HR and no client-provided HR exists,
-        # hr_bpm stays None. Scan completes; flags describe the cause.
-
-    # -------------------------------------------------------------------
-    # Server-side voice DSP processing (if audio_samples provided)
-    # -------------------------------------------------------------------
-    if body.audio_samples:
-        audio = build_audio_samples(body.audio_samples)
-        voice = process_audio(audio)
-        if voice.jitter_pct is not None:
-            body = body.model_copy(
-                update={
-                    "voice_jitter_pct": voice.jitter_pct,
-                    "voice_shimmer_pct": voice.shimmer_pct,
-                    "audio_snr_db": voice.snr_db if voice.snr_db is not None else body.audio_snr_db,
-                }
-            )
-
-    # Quality gate
-    gate = run_quality_gate(body)
-    if not gate.passed:
-        session.status = SessionStatus.REJECTED
-        session.completed_at = datetime.now(tz=timezone.utc)
-        await db.flush()
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "message": "Scan quality was insufficient. Please retry in better conditions.",
-                "flags": gate.flags,
-                "rejection_reason": gate.rejection_reason,
-            },
-        )
-
-    # Compute trend alert from the prior 7-day multi-metric baseline.
-    cutoff = datetime.now(tz=timezone.utc) - timedelta(days=settings.trend_lookback_days)
-    baseline_stmt = build_trend_baseline_query(session.user_id, cutoff)
-    baseline_result = await db.execute(baseline_stmt)
-    baselines = baselines_from_row(baseline_result.one())
-
-    trend_alert = compute_trend_alert(
-        {
-            "hr_bpm": body.hr_bpm,
-            "hrv_ms": body.hrv_ms,
-            "respiratory_rate": body.respiratory_rate,
-            "voice_jitter_pct": body.voice_jitter_pct,
-            "voice_shimmer_pct": body.voice_shimmer_pct,
-        },
-        baselines,
-        threshold_pct=settings.trend_alert_threshold_pct,
-        min_baseline_scans=settings.trend_min_baseline_scans,
-    )
-
-    # Cooldown check: suppress the alert if one was already delivered within the window
-    if trend_alert is not None:
-        cooldown_cutoff = datetime.now(tz=timezone.utc) - timedelta(
-            hours=settings.trend_cooldown_hours
-        )
-        cooldown_stmt = build_cooldown_check_query(session.user_id, cooldown_cutoff)
-        cooldown_result = await db.execute(cooldown_stmt)
-        if cooldown_result.scalar_one_or_none() is not None:
-            trend_alert = None  # suppress — cooldown active
-
-    # Deliver alert if one fired (after cooldown check)
-    if trend_alert is not None:
-        await deliver_alert(session.user_id, trend_alert)
-
-    # Vascular age wellness indicator
-    vascular_age = estimate_vascular_age(body.hr_bpm, body.hrv_ms)
-
-    # Anemia screening wellness indicator (confidence-gated color heuristic)
-    anemia = screen_anemia(
-        r_mean=body.frame_r_mean,
-        g_mean=body.frame_g_mean,
-        b_mean=body.frame_b_mean,
-        lighting_score=body.lighting_score,
-        motion_score=body.motion_score,
-    )
-
-    # Merge quality-gate flags with rPPG processing flags (deduplicated)
-    combined_flags = list(dict.fromkeys(gate.flags + rppg_flags))
-
-    # Persist result
-    scan_result = ScanResult(
-        session_id=session_id,
-        user_id=session.user_id,
-        hr_bpm=body.hr_bpm,
-        hrv_ms=body.hrv_ms,
-        respiratory_rate=body.respiratory_rate,
-        voice_jitter_pct=body.voice_jitter_pct,
-        voice_shimmer_pct=body.voice_shimmer_pct,
-        quality_score=body.quality_score,
-        lighting_score=body.lighting_score,
-        motion_score=body.motion_score,
-        face_confidence=body.face_confidence,
-        audio_snr_db=body.audio_snr_db,
-        flags=combined_flags,
-        trend_alert=trend_alert,
-        vascular_age_estimate=vascular_age.estimate_years,
-        vascular_age_confidence=vascular_age.confidence,
-        hb_proxy_score=anemia.hb_proxy_score,
-        anemia_wellness_label=anemia.wellness_label,
-        anemia_confidence=anemia.confidence,
-    )
-    db.add(scan_result)
-
-    session.status = SessionStatus.COMPLETED
-    session.completed_at = datetime.now(tz=timezone.utc)
-    await db.flush()
-    await db.refresh(scan_result)
-
+    except ScanServiceError as exc:
+        _raise_http_for_scan_service_error(exc)
     return ScanResultResponse.model_validate(scan_result)
 
 
@@ -268,21 +77,21 @@ async def get_scan_session(
     db: AsyncSession = Depends(get_db),
     auth_user_id: str = Depends(require_auth),
 ) -> ScanSessionWithResult:
-    """Fetch a single scan session with its result (if completed)."""
-    stmt = select(ScanSession).where(ScanSession.id == session_id)
-    result = await db.execute(stmt)
-    session = result.scalar_one_or_none()
-
-    if session is None or session.user_id != auth_user_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-
-    result_stmt = select(ScanResult).where(ScanResult.session_id == session_id)
-    result_row = await db.execute(result_stmt)
-    scan_result = result_row.scalar_one_or_none()
-
+    try:
+        scan_bundle = await get_scan_session_with_result(
+            db,
+            session_id=session_id,
+            auth_user_id=auth_user_id,
+        )
+    except ScanServiceError as exc:
+        _raise_http_for_scan_service_error(exc)
     return ScanSessionWithResult(
-        session=ScanSessionResponse.model_validate(session),
-        result=ScanResultResponse.model_validate(scan_result) if scan_result else None,
+        session=ScanSessionResponse.model_validate(scan_bundle.session),
+        result=(
+            ScanResultResponse.model_validate(scan_bundle.result)
+            if scan_bundle.result is not None
+            else None
+        ),
     )
 
 
@@ -293,70 +102,28 @@ async def get_scan_history(
     db: AsyncSession = Depends(get_db),
     auth_user_id: str = Depends(require_auth),
 ) -> ScanHistoryResponse:
-    """
-    Paginated scan history for a user, with trend deltas vs prior 7-day average.
-    """
-    offset = (page - 1) * page_size
-
-    user_id = auth_user_id
-
-    # Total count
-    count_stmt = select(func.count(ScanSession.id)).where(
-        ScanSession.user_id == user_id,
-        ScanSession.status == SessionStatus.COMPLETED,
+    history_page = await get_scan_history_page(
+        db,
+        user_id=auth_user_id,
+        page=page,
+        page_size=page_size,
     )
-    total_result = await db.execute(count_stmt)
-    total = total_result.scalar_one()
-
-    # Page of sessions
-    sessions_stmt = (
-        select(ScanSession)
-        .where(ScanSession.user_id == user_id, ScanSession.status == SessionStatus.COMPLETED)
-        .order_by(ScanSession.created_at.desc())
-        .offset(offset)
-        .limit(page_size)
-    )
-    sessions_result = await db.execute(sessions_stmt)
-    sessions = sessions_result.scalars().all()
-
-    items: list[ScanHistoryItem] = []
-    for sess in sessions:
-        result_stmt = select(ScanResult).where(ScanResult.session_id == sess.id)
-        result_row = await db.execute(result_stmt)
-        scan_result = result_row.scalar_one_or_none()
-
-        # Compute trend delta: compare this result vs prior 7-day avg (excluding this scan)
-        hr_trend_delta = None
-        hrv_trend_delta = None
-        if scan_result and sess.created_at:
-            cutoff = sess.created_at - timedelta(days=settings.trend_lookback_days)
-            prior_stmt = build_trend_baseline_query(user_id, cutoff, before=sess.created_at)
-            prior_result = await db.execute(prior_stmt)
-            baselines = baselines_from_row(prior_result.one())
-
-            hr_baseline = baselines.get("hr_bpm", TrendBaseline(average=None, sample_count=0))
-            hrv_baseline = baselines.get("hrv_ms", TrendBaseline(average=None, sample_count=0))
-
-            if (
-                scan_result.hr_bpm is not None
-                and hr_baseline.average is not None
-                and hr_baseline.sample_count >= settings.trend_min_baseline_scans
-            ):
-                hr_trend_delta = round(scan_result.hr_bpm - hr_baseline.average, 2)
-            if (
-                scan_result.hrv_ms is not None
-                and hrv_baseline.average is not None
-                and hrv_baseline.sample_count >= settings.trend_min_baseline_scans
-            ):
-                hrv_trend_delta = round(scan_result.hrv_ms - hrv_baseline.average, 2)
-
-        items.append(
-            ScanHistoryItem(
-                session=ScanSessionResponse.model_validate(sess),
-                result=ScanResultResponse.model_validate(scan_result) if scan_result else None,
-                hr_trend_delta=hr_trend_delta,
-                hrv_trend_delta=hrv_trend_delta,
-            )
+    items = [
+        ScanHistoryItem(
+            session=ScanSessionResponse.model_validate(item.session),
+            result=ScanResultResponse.model_validate(item.result) if item.result is not None else None,
+            hr_trend_delta=item.hr_trend_delta,
+            hrv_trend_delta=item.hrv_trend_delta,
         )
+        for item in history_page.items
+    ]
+    return ScanHistoryResponse(
+        items=items,
+        total=history_page.total,
+        page=history_page.page,
+        page_size=history_page.page_size,
+    )
 
-    return ScanHistoryResponse(items=items, total=total, page=page, page_size=page_size)
+
+def _raise_http_for_scan_service_error(exc: ScanServiceError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc

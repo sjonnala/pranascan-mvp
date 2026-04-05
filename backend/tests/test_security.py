@@ -93,7 +93,12 @@ async def test_dpdp_consent_grant_revoke_cycle(client, auth_headers):
         json={"user_id": user_id, "consent_version": "1.0", "purpose": "wellness_screening"},
         headers=auth_headers,
     )
-    status_resp = await client.get("/api/v1/consent/status", params={"user_id": user_id})
+    status_resp = await client.get(
+        "/api/v1/consent/status",
+        params={"user_id": user_id},
+        headers=auth_headers,
+    )
+    assert status_resp.status_code == 200
     assert status_resp.json()["has_active_consent"] is True
 
     await client.post(
@@ -101,7 +106,12 @@ async def test_dpdp_consent_grant_revoke_cycle(client, auth_headers):
         json={"user_id": user_id},
         headers=auth_headers,
     )
-    status_resp = await client.get("/api/v1/consent/status", params={"user_id": user_id})
+    status_resp = await client.get(
+        "/api/v1/consent/status",
+        params={"user_id": user_id},
+        headers=auth_headers,
+    )
+    assert status_resp.status_code == 200
     assert status_resp.json()["has_active_consent"] is False
 
 
@@ -121,7 +131,12 @@ async def test_dpdp_deletion_request_accepted(client, auth_headers):
         headers=auth_headers,
     )
     assert del_resp.status_code in (200, 201)
-    status_resp = await client.get("/api/v1/consent/status", params={"user_id": user_id})
+    status_resp = await client.get(
+        "/api/v1/consent/status",
+        params={"user_id": user_id},
+        headers=auth_headers,
+    )
+    assert status_resp.status_code == 200
     assert status_resp.json()["deletion_requested"] is True
 
 

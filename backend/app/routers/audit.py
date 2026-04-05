@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.middleware.auth import require_auth
+from app.middleware.auth import enforce_self_scope, require_auth
 from app.models.audit import AuditLog
 from app.schemas.audit import AuditLogListResponse, AuditLogResponse
 
@@ -19,7 +19,7 @@ async def list_audit_logs(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    _auth_user_id: str = Depends(require_auth),
+    auth_user_id: str = Depends(require_auth),
 ) -> AuditLogListResponse:
     """
     List immutable audit log entries.
@@ -28,9 +28,9 @@ async def list_audit_logs(
     """
     offset = (page - 1) * page_size
 
-    base_filter = []
-    if user_id:
-        base_filter.append(AuditLog.user_id == user_id)
+    effective_user_id = enforce_self_scope(auth_user_id, user_id)
+
+    base_filter = [AuditLog.user_id == effective_user_id]
     if action:
         base_filter.append(AuditLog.action.startswith(action))
 

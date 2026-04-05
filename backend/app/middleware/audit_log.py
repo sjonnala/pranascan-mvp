@@ -10,8 +10,8 @@ import time
 from fastapi import Request, Response
 from starlette.middleware.base import RequestResponseEndpoint
 
-from app.database import AsyncSessionLocal
-from app.models.audit import AuditLog
+from app.database import AsyncSessionLocal, async_transaction_scope
+from app.services.audit_service import log_event
 
 
 async def audit_log_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -41,8 +41,9 @@ async def audit_log_middleware(request: Request, call_next: RequestResponseEndpo
     action = f"{request.method}:{path}"
 
     try:
-        async with AsyncSessionLocal() as db:
-            entry = AuditLog(
+        async with async_transaction_scope(AsyncSessionLocal) as db:
+            await log_event(
+                db,
                 user_id=user_id,
                 action=action,
                 http_method=request.method,
@@ -52,8 +53,6 @@ async def audit_log_middleware(request: Request, call_next: RequestResponseEndpo
                 ip_address=ip_address,
                 user_agent=request.headers.get("user-agent"),
             )
-            db.add(entry)
-            await db.commit()
     except Exception:
         # Audit failures must not break the main request
         pass

@@ -1,3 +1,5 @@
+"""Deletion-request batch job with explicit per-request transaction ownership."""
+
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -5,6 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import and_, delete
 from sqlalchemy.orm import Session
 
+from app.database import transaction_scope
 from app.models.consent import ConsentRecord
 from app.models.deletion_request import DeletionRequest, DeletionRequestStatus
 from app.models.scan import ScanSession
@@ -13,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 class DataPurgerService:
+    """Purge eligible deletion requests, one explicit transaction per request."""
+
     def __init__(self, db: Session):
         self.db = db
 
@@ -76,39 +81,39 @@ class DataPurgerService:
             user_id = request.user_id
             user_scan_sessions_deleted = 0
             user_consent_records_deleted = 0
-            success = True
-            failure_reason = None
 
             logger.info(f"Processing deletion request for user_id: {user_id}, request_id: {request.id}")
 
             try:
-                # Delete scan sessions
-                user_scan_sessions_deleted = self._delete_user_scan_sessions(user_id)
+                with transaction_scope(self.db):
+                    # Delete scan sessions
+                    user_scan_sessions_deleted = self._delete_user_scan_sessions(user_id)
+                    logger.info(
+                        f"Deleted {user_scan_sessions_deleted} scan sessions for user_id: {user_id}"
+                    )
+
+                    # Delete consent records
+                    user_consent_records_deleted = self._delete_user_consent_records(user_id)
+                    logger.info(
+                        f"Deleted {user_consent_records_deleted} consent records for user_id: {user_id}"
+                    )
+
+                    request.status = DeletionRequestStatus.COMPLETED.value
+                    request.purged_at = datetime.utcnow()
+                    request.failure_reason = None
+                    self.db.add(request)
+
                 total_scan_sessions_deleted += user_scan_sessions_deleted
-                logger.info(f"Deleted {user_scan_sessions_deleted} scan sessions for user_id: {user_id}")
-
-                # Delete consent records
-                user_consent_records_deleted = self._delete_user_consent_records(user_id)
                 total_consent_records_deleted += user_consent_records_deleted
-                logger.info(f"Deleted {user_consent_records_deleted} consent records for user_id: {user_id}")
-
                 purged_users_count += 1
-                request.status = DeletionRequestStatus.COMPLETED.value
-                request.purged_at = datetime.utcnow()
-                request.failure_reason = None
-                self.db.add(request)
-                self.db.commit()
                 logger.info(f"Deletion request {request.id} for user {user_id} marked as COMPLETED.")
 
             except Exception as e:
-                self.db.rollback()
-                success = False
-                failure_reason = str(e)
-                request.status = DeletionRequestStatus.FAILED.value
-                request.purged_at = None
-                request.failure_reason = failure_reason
-                self.db.add(request)
-                self.db.commit()
+                with transaction_scope(self.db):
+                    request.status = DeletionRequestStatus.FAILED.value
+                    request.purged_at = None
+                    request.failure_reason = str(e)
+                    self.db.add(request)
                 logger.error(
                     f"Error processing deletion for user_id: {user_id}, request_id: {request.id}. "
                     f"Error: {e}",
@@ -118,7 +123,11 @@ class DataPurgerService:
 
             finally:
                 # Even if no data was found, mark as completed if no errors occurred.
-                if success and user_scan_sessions_deleted == 0 and user_consent_records_deleted == 0:
+                if (
+                    request.status == DeletionRequestStatus.COMPLETED.value
+                    and user_scan_sessions_deleted == 0
+                    and user_consent_records_deleted == 0
+                ):
                     logger.info(
                         f"No scan sessions or consent records found for user_id: {user_id}. "
                         f"Deletion request {request.id} marked as COMPLETED."

@@ -96,7 +96,7 @@ async def redeem_beta_invite(
     )
     invite.redemption_count += 1
     db.add(enrollment)
-    await db.commit()
+    await db.flush()
     await db.refresh(enrollment)
 
     return _status_payload(user_id, enrollment)

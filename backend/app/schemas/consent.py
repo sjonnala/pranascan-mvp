@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class ConsentGrantRequest(BaseModel):
-    user_id: str = Field(..., description="Pseudonymous user UUID")
+    user_id: str = Field(..., description="Pseudonymous user UUID; must match the authenticated subject.")
     consent_version: str = Field(default="1.0")
     purpose: str = Field(
         default="wellness_screening",
@@ -17,12 +17,12 @@ class ConsentGrantRequest(BaseModel):
 
 
 class ConsentRevokeRequest(BaseModel):
-    user_id: str
+    user_id: str = Field(..., description="Pseudonymous user UUID; must match the authenticated subject.")
     reason: str | None = Field(default=None, max_length=256)
 
 
 class ConsentDeletionRequest(BaseModel):
-    user_id: str
+    user_id: str = Field(..., description="Pseudonymous user UUID; must match the authenticated subject.")
     reason: str | None = Field(default=None, max_length=256)
 
 

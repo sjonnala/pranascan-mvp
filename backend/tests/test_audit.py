@@ -2,10 +2,12 @@
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.audit import AuditLog
 from app.services.audit_service import log_event
-from tests.conftest import TEST_USER_ID
+from tests.conftest import TEST_USER_ID, TEST_USER_ID_2
 
 
 @pytest.mark.asyncio
@@ -79,6 +81,37 @@ async def test_audit_log_filter_by_user(
     data = resp.json()
     assert data["total"] == 1
     assert data["items"][0]["user_id"] == TEST_USER_ID
+
+
+@pytest.mark.asyncio
+async def test_audit_log_filter_rejects_cross_user_access(
+    client: AsyncClient, auth_headers: dict
+):
+    """Authenticated users cannot request another user's audit log slice."""
+    resp = await client.get(
+        "/api/v1/audit/logs",
+        params={"user_id": TEST_USER_ID_2},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_audit_middleware_records_authenticated_actor(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: dict
+):
+    """Audit middleware should attach the authenticated user_id to request logs."""
+    resp = await client.post(
+        "/api/v1/consent",
+        json={"user_id": TEST_USER_ID, "consent_version": "1.0", "purpose": "wellness_screening"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 201
+
+    result = await db_session.execute(select(AuditLog).where(AuditLog.http_path == "/api/v1/consent"))
+    entries = result.scalars().all()
+    assert len(entries) == 1
+    assert entries[0].user_id == TEST_USER_ID
 
 
 @pytest.mark.asyncio

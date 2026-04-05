@@ -38,7 +38,6 @@ async def link_abha_account(
     ABHA ID must be 14 digits, with or without hyphens (e.g. 91-2345-6789-0123).
     """
     link = await abha_adapter.link_account(db, user_id, body.abha_id)
-    await db.commit()
 
     return AbhaLinkResponse(
         user_id=user_id,
@@ -60,7 +59,6 @@ async def unlink_abha_account(
     Existing sync records are preserved for audit purposes.
     """
     found = await abha_adapter.unlink_account(db, user_id)
-    await db.commit()
     if not found:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -137,7 +135,6 @@ async def sync_scan_to_abha(
         }
 
     sync = await abha_adapter.sync_vitals(db, user_id, session_id, vitals)
-    await db.commit()
 
     return AbhaSyncResponse(
         session_id=session_id,

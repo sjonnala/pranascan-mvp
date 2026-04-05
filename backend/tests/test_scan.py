@@ -8,7 +8,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.config import settings
-from tests.conftest import TEST_USER_ID
+from tests.conftest import TEST_USER_ID, TEST_USER_ID_2
 
 GOOD_RESULT = {
     "hr_bpm": 72.0,
@@ -90,6 +90,18 @@ async def test_create_session_with_consent(client: AsyncClient, auth_headers: di
     assert data["user_id"] == TEST_USER_ID
     assert data["status"] == "initiated"
     assert data["device_model"] == "Pixel 8"
+
+
+@pytest.mark.asyncio
+async def test_create_session_rejects_cross_user_access(client: AsyncClient, auth_headers: dict):
+    """Session creation rejects a body user_id that does not match the token subject."""
+    await _grant_consent(client, auth_headers)
+    resp = await client.post(
+        "/api/v1/scans/sessions",
+        json={"user_id": TEST_USER_ID_2},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -657,7 +669,7 @@ async def test_delivery_stub_called_on_alert(client: AsyncClient, auth_headers: 
         assert resp.status_code == 200, resp.text
 
     mock_deliver = AsyncMock()
-    with patch("app.routers.scan.deliver_alert", mock_deliver):
+    with patch("app.services.scan_service.deliver_alert", mock_deliver):
         session_id = await _create_session(client, auth_headers)
         resp = await client.put(
             f"/api/v1/scans/sessions/{session_id}/complete",
