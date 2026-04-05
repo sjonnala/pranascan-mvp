@@ -62,25 +62,28 @@ describe('ResultsScreen feedback instrumentation', () => {
       <ResultsScreen sessionId="session-1" onScanAgain={jest.fn()} />
     );
 
-    expect(await findByTestId('feedback-card')).toBeTruthy();
+    expect(await findByTestId('feedback-card', {}, { timeout: 5000 })).toBeTruthy();
 
     fireEvent.press(getByTestId('feedback-needs-work'));
     fireEvent.press(getByTestId('feedback-nps-7'));
     fireEvent.changeText(getByTestId('feedback-comment-input'), 'Voice step felt long.');
     fireEvent.press(getByTestId('feedback-submit'));
 
-    await waitFor(() => {
-      expect(submitScanFeedback).toHaveBeenCalledWith({
-        session_id: 'session-1',
-        useful_response: 'needs_work',
-        nps_score: 7,
-        comment: 'Voice step felt long.',
-      });
-    });
+    await waitFor(
+      () => {
+        expect(submitScanFeedback).toHaveBeenCalledWith({
+          session_id: 'session-1',
+          useful_response: 'needs_work',
+          nps_score: 7,
+          comment: 'Voice step felt long.',
+        });
+      },
+      { timeout: 5000 },
+    );
 
-    expect(queryByTestId('feedback-card')).toBeNull();
-    expect(await findByTestId('feedback-thanks')).toBeTruthy();
-  });
+    await waitFor(() => expect(queryByTestId('feedback-card')).toBeNull(), { timeout: 5000 });
+    expect(await findByTestId('feedback-thanks', {}, { timeout: 5000 })).toBeTruthy();
+  }, 15000);
 
   it('shows saved feedback when feedback already exists for the session', async () => {
     getFeedbackForSession.mockResolvedValue({

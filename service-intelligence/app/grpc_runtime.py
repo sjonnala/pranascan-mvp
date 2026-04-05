@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import grpc
+
 import scan_intelligence_pb2
 import scan_intelligence_pb2_grpc
-
 from app.config import settings
 from app.schemas.scan import FrameSampleSchema, ScanResultSubmit
 from app.services.scan_evaluation_service import evaluate_scan_submission
@@ -17,7 +17,7 @@ _INTERNAL_TOKEN_HEADER = "x-internal-service-token"
 class ScanIntelligenceService(scan_intelligence_pb2_grpc.ScanIntelligenceServiceServicer):
     """Implements the full compute-only scan evaluation contract."""
 
-    async def EvaluateScan(
+    async def EvaluateScan(  # noqa: N802
         self,
         request: scan_intelligence_pb2.ScanEvaluationRequest,
         context: grpc.aio.ServicerContext,
