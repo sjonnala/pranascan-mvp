@@ -1,9 +1,11 @@
 package com.pranapulse.core.scan.application;
 
+import com.pranapulse.core.scan.domain.ScanType;
 import java.util.Arrays;
 import java.util.List;
 
 public record ScanEvaluationCommand(
+        ScanType scanType,
         List<FrameSample> frameData,
         List<Double> audioSamples,
         byte[] imageBytes,
@@ -19,12 +21,14 @@ public record ScanEvaluationCommand(
         Double faceConfidence,
         Double audioSnrDb,
         List<String> flags,
+        Double userHeightCm,
         Double frameRMean,
         Double frameGMean,
         Double frameBMean
 ) {
 
     public ScanEvaluationCommand {
+        scanType = ScanType.defaultIfNull(scanType);
         flags = flags == null ? List.of() : List.copyOf(flags);
         imageBytes = imageBytes == null ? null : Arrays.copyOf(imageBytes, imageBytes.length);
         videoBytes = videoBytes == null ? null : Arrays.copyOf(videoBytes, videoBytes.length);

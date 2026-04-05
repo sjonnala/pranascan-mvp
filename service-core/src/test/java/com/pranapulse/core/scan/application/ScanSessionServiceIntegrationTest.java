@@ -13,6 +13,7 @@ import com.pranapulse.core.consent.application.ConsentService;
 import com.pranapulse.core.scan.domain.ScanResult;
 import com.pranapulse.core.scan.domain.ScanSession;
 import com.pranapulse.core.scan.domain.ScanSessionStatus;
+import com.pranapulse.core.scan.domain.ScanType;
 import com.pranapulse.core.scan.repository.ScanResultRepository;
 import com.pranapulse.core.scan.repository.ScanSessionRepository;
 import java.util.List;
@@ -49,7 +50,10 @@ class ScanSessionServiceIntegrationTest {
 
         AccessDeniedException exception = assertThrows(
                 AccessDeniedException.class,
-                () -> scanSessionService.createSession(user.getId(), new CreateScanSessionCommand("Pixel 9", "1.2.0"))
+                () -> scanSessionService.createSession(
+                        user.getId(),
+                        new CreateScanSessionCommand(ScanType.STANDARD, "Pixel 9", "1.2.0")
+                )
         );
 
         assertTrue(exception.getMessage().contains("Active consent required"));
@@ -61,7 +65,7 @@ class ScanSessionServiceIntegrationTest {
         consentService.grantConsent(user.getId(), "1.0", "wellness_screening", null, null);
         ScanSession session = scanSessionService.createSession(
                 user.getId(),
-                new CreateScanSessionCommand("Pixel 9", "1.2.0")
+                new CreateScanSessionCommand(ScanType.STANDARD, "Pixel 9", "1.2.0")
         );
         when(scanEvaluationService.evaluate(any())).thenReturn(rejectedOutcome());
 
@@ -83,7 +87,7 @@ class ScanSessionServiceIntegrationTest {
         consentService.grantConsent(user.getId(), "1.0", "wellness_screening", null, null);
         ScanSession session = scanSessionService.createSession(
                 user.getId(),
-                new CreateScanSessionCommand("iPhone 17", "1.2.0")
+                new CreateScanSessionCommand(ScanType.STANDARD, "iPhone 17", "1.2.0")
         );
         when(scanEvaluationService.evaluate(any())).thenReturn(successOutcome());
 
@@ -112,14 +116,14 @@ class ScanSessionServiceIntegrationTest {
         for (int index = 0; index < 3; index++) {
             ScanSession session = scanSessionService.createSession(
                     user.getId(),
-                    new CreateScanSessionCommand("Pixel 9", "1.2.0")
+                    new CreateScanSessionCommand(ScanType.STANDARD, "Pixel 9", "1.2.0")
             );
             scanSessionService.completeSession(user.getId(), session.getId(), sampleCommand());
         }
 
         ScanSession alertSession = scanSessionService.createSession(
                 user.getId(),
-                new CreateScanSessionCommand("Pixel 9", "1.2.0")
+                new CreateScanSessionCommand(ScanType.STANDARD, "Pixel 9", "1.2.0")
         );
         ScanResult alertedResult = scanSessionService.completeSession(
                 user.getId(),
@@ -139,7 +143,7 @@ class ScanSessionServiceIntegrationTest {
         for (int index = 0; index < 3; index++) {
             ScanSession session = scanSessionService.createSession(
                     user.getId(),
-                    new CreateScanSessionCommand("Pixel 9", "1.2.0")
+                    new CreateScanSessionCommand(ScanType.STANDARD, "Pixel 9", "1.2.0")
             );
             scanSessionService.completeSession(user.getId(), session.getId(), sampleCommand());
         }
@@ -153,6 +157,7 @@ class ScanSessionServiceIntegrationTest {
 
     private static ScanEvaluationCommand sampleCommand() {
         return new ScanEvaluationCommand(
+                ScanType.STANDARD,
                 null,
                 null,
                 null,
@@ -168,6 +173,7 @@ class ScanSessionServiceIntegrationTest {
                 0.94,
                 22.0,
                 List.of(),
+                null,
                 100.0,
                 110.0,
                 90.0
@@ -179,6 +185,7 @@ class ScanSessionServiceIntegrationTest {
                 72.0,
                 40.0,
                 96.0,
+                null,
                 15.0,
                 0.4,
                 1.8,
@@ -204,6 +211,7 @@ class ScanSessionServiceIntegrationTest {
                 72.0,
                 40.0,
                 97.0,
+                null,
                 15.0,
                 0.4,
                 1.8,
@@ -229,6 +237,7 @@ class ScanSessionServiceIntegrationTest {
                 92.0,
                 22.0,
                 95.0,
+                null,
                 21.0,
                 1.1,
                 4.5,

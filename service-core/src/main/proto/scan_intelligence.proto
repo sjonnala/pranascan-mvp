@@ -10,6 +10,12 @@ service ScanIntelligenceService {
   rpc EvaluateScan (ScanEvaluationRequest) returns (ScanEvaluationResponse);
 }
 
+enum ScanType {
+  SCAN_TYPE_UNSPECIFIED = 0;
+  SCAN_TYPE_STANDARD = 1;
+  SCAN_TYPE_DEEP_DIVE = 2;
+}
+
 message FrameSample {
   double t_ms = 1;
   double r_mean = 2;
@@ -40,27 +46,30 @@ message ScanEvaluationRequest {
   optional double frame_r_mean = 16;
   optional double frame_g_mean = 17;
   optional double frame_b_mean = 18;
+  ScanType scan_type = 19;
+  optional double user_height_cm = 20;
 }
 
 message ScanEvaluationResponse {
   optional double hr_bpm = 1;
   optional double hrv_ms = 2;
   optional double spo2 = 3;
-  optional double respiratory_rate = 4;
-  optional double voice_jitter_pct = 5;
-  optional double voice_shimmer_pct = 6;
-  double quality_score = 7;
-  optional double lighting_score = 8;
-  optional double motion_score = 9;
-  optional double face_confidence = 10;
-  optional double audio_snr_db = 11;
-  repeated string flags = 12;
-  repeated string warnings = 13;
-  bool quality_gate_passed = 14;
-  optional string rejection_reason = 15;
-  optional double vascular_age_estimate = 16;
-  optional double vascular_age_confidence = 17;
-  optional double hb_proxy_score = 18;
-  optional string anemia_wellness_label = 19;
-  optional double anemia_confidence = 20;
+  optional double stiffness_index = 4;
+  optional double respiratory_rate = 5;
+  optional double voice_jitter_pct = 6;
+  optional double voice_shimmer_pct = 7;
+  double quality_score = 8;
+  optional double lighting_score = 9;
+  optional double motion_score = 10;
+  optional double face_confidence = 11;
+  optional double audio_snr_db = 12;
+  repeated string flags = 13;
+  repeated string warnings = 14;
+  bool quality_gate_passed = 15;
+  optional string rejection_reason = 16;
+  optional double vascular_age_estimate = 17;
+  optional double vascular_age_confidence = 18;
+  optional double hb_proxy_score = 19;
+  optional string anemia_wellness_label = 20;
+  optional double anemia_confidence = 21;
 }

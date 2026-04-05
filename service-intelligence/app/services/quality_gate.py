@@ -125,6 +125,7 @@ def run_quality_gate(payload: ScanResultSubmit) -> QualityGateResult:
     accumulated_flags: list[str] = list(payload.flags)
     warnings: list[str] = []
     hard_failures: list[str] = []
+    is_deep_dive = payload.scan_type == "deep_dive"
 
     # ── Lighting ─────────────────────────────────────────────────────────────
     lighting_severity, lighting_flag = _check_metric(
@@ -154,44 +155,63 @@ def run_quality_gate(payload: ScanResultSubmit) -> QualityGateResult:
             f"{settings.min_motion_score}. Hold still during the scan."
         )
 
-    # ── Face confidence ───────────────────────────────────────────────────────
-    face_severity, face_flag = _check_metric(
-        payload.face_confidence,
-        hard_threshold=settings.min_face_confidence,
-        warning_delta=_FACE_WARNING_DELTA,
-        low_flag="face_not_detected",
-        warning_flag="partial_occlusion_suspected",
-    )
-    if face_flag:
-        accumulated_flags.append(face_flag)
-        if face_severity == QualityFlagSeverity.ERROR:
-            hard_failures.append(
-                f"Face confidence {payload.face_confidence:.2f} too low "
-                f"(threshold {settings.min_face_confidence - _FACE_WARNING_DELTA:.2f}). "
-                "Centre your face in the camera."
-            )
-        else:
-            # borderline face_confidence = likely partial occlusion (glasses/beard)
-            warnings.append(face_flag)
+    # ── Face / thumb contact confidence ──────────────────────────────────────
+    if is_deep_dive:
+        contact_severity, contact_flag = _check_metric(
+            payload.face_confidence,
+            hard_threshold=settings.min_face_confidence,
+            warning_delta=_FACE_WARNING_DELTA,
+            low_flag="poor_thumb_contact",
+            warning_flag="borderline_thumb_contact",
+        )
+        if contact_flag:
+            accumulated_flags.append(contact_flag)
+            if contact_severity == QualityFlagSeverity.ERROR:
+                hard_failures.append(
+                    f"Thumb contact confidence {payload.face_confidence:.2f} too low "
+                    f"(threshold {settings.min_face_confidence - _FACE_WARNING_DELTA:.2f}). "
+                    "Cover the camera and flash fully with your thumb."
+                )
+            else:
+                warnings.append(contact_flag)
+    else:
+        face_severity, face_flag = _check_metric(
+            payload.face_confidence,
+            hard_threshold=settings.min_face_confidence,
+            warning_delta=_FACE_WARNING_DELTA,
+            low_flag="face_not_detected",
+            warning_flag="partial_occlusion_suspected",
+        )
+        if face_flag:
+            accumulated_flags.append(face_flag)
+            if face_severity == QualityFlagSeverity.ERROR:
+                hard_failures.append(
+                    f"Face confidence {payload.face_confidence:.2f} too low "
+                    f"(threshold {settings.min_face_confidence - _FACE_WARNING_DELTA:.2f}). "
+                    "Centre your face in the camera."
+                )
+            else:
+                warnings.append(face_flag)
 
     # ── Audio SNR ─────────────────────────────────────────────────────────────
-    audio_severity, audio_flag = _check_metric(
-        payload.audio_snr_db,
-        hard_threshold=settings.min_audio_snr_db,
-        warning_delta=_AUDIO_WARNING_DELTA,
-        low_flag="high_noise",
-        warning_flag="borderline_noise",
-    )
-    if audio_flag:
-        accumulated_flags.append(audio_flag)
-        if audio_severity == QualityFlagSeverity.ERROR:
-            hard_failures.append(
-                f"Audio SNR {payload.audio_snr_db:.1f} dB too low "
-                f"(threshold {settings.min_audio_snr_db - _AUDIO_WARNING_DELTA:.1f} dB). "
-                "Try in a quieter environment."
-            )
-        else:
-            warnings.append(audio_flag)
+    if not is_deep_dive:
+        audio_severity, audio_flag = _check_metric(
+            payload.audio_snr_db,
+            hard_threshold=settings.min_audio_snr_db,
+            warning_delta=_AUDIO_WARNING_DELTA,
+            low_flag="high_noise",
+            warning_flag="borderline_noise",
+        )
+        if audio_flag:
+            accumulated_flags.append(audio_flag)
+            if audio_severity == QualityFlagSeverity.ERROR:
+                hard_failures.append(
+                    f"Audio SNR {payload.audio_snr_db:.1f} dB too low "
+                    f"(threshold {settings.min_audio_snr_db - _AUDIO_WARNING_DELTA:.1f} dB). "
+                    "Try in a quieter environment."
+                )
+            else:
+                warnings.append(audio_flag)
 
     # De-duplicate flags (preserve insertion order)
     accumulated_flags = list(dict.fromkeys(accumulated_flags))

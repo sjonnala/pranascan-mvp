@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 import scan_intelligence_pb2
 
@@ -34,14 +36,15 @@ class _MetadataItem:
 
 
 GOOD_EVALUATION_REQUEST = scan_intelligence_pb2.ScanEvaluationRequest(
+    scan_type=scan_intelligence_pb2.SCAN_TYPE_STANDARD,
     frame_data=[
         scan_intelligence_pb2.FrameSample(
-            t_ms=float(index * 500),
-            r_mean=90.0,
-            g_mean=120.0 + (index % 3),
-            b_mean=80.0,
+            t_ms=float(index * (1000 / 30.0)),
+            r_mean=96.0 + 1.0 * math.sin(2.0 * math.pi * 1.2 * (index / 30.0)),
+            g_mean=112.0 + 2.0 * math.sin(2.0 * math.pi * 1.2 * (index / 30.0)),
+            b_mean=82.0 + 0.5 * math.sin(2.0 * math.pi * 1.2 * (index / 30.0)),
         )
-        for index in range(30)
+        for index in range(900)
     ],
     audio_samples=[0.05 if index % 2 == 0 else -0.05 for index in range(10_000)],
     quality_score=0.9,
@@ -101,3 +104,60 @@ async def test_scan_evaluation_can_use_raw_media_bytes():
     assert response.HasField("hrv_ms")
     assert response.HasField("spo2")
     assert 90.0 <= response.spo2 <= 100.0
+
+
+@pytest.mark.asyncio
+async def test_scan_evaluation_supports_deep_dive_contact_ppg():
+    service = ScanIntelligenceService()
+    heart_rate_bpm = 66.0
+    beat_period_s = 60.0 / heart_rate_bpm
+    request = scan_intelligence_pb2.ScanEvaluationRequest(
+        scan_type=scan_intelligence_pb2.SCAN_TYPE_DEEP_DIVE,
+        user_height_cm=172.0,
+        frame_data=[
+            scan_intelligence_pb2.FrameSample(
+                t_ms=float(index * (1000 / 60.0)),
+                r_mean=190.0
+                + 20.0 * math.exp(
+                    -0.5
+                    * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.16) / 0.05) ** 2
+                )
+                + 9.0
+                * math.exp(
+                    -0.5
+                    * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.43) / 0.07) ** 2
+                ),
+                g_mean=190.0
+                + 20.0 * math.exp(
+                    -0.5
+                    * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.16) / 0.05) ** 2
+                )
+                + 9.0
+                * math.exp(
+                    -0.5
+                    * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.43) / 0.07) ** 2
+                ),
+                b_mean=190.0
+                + 20.0 * math.exp(
+                    -0.5
+                    * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.16) / 0.05) ** 2
+                )
+                + 9.0
+                * math.exp(
+                    -0.5
+                    * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.43) / 0.07) ** 2
+                ),
+            )
+            for index in range(60 * 30)
+        ],
+        quality_score=0.94,
+        lighting_score=0.95,
+        motion_score=0.99,
+        face_confidence=0.92,
+    )
+
+    response = await service.EvaluateScan(request, _auth_context())
+
+    assert response.quality_gate_passed is True
+    assert response.HasField("hr_bpm")
+    assert response.HasField("stiffness_index")

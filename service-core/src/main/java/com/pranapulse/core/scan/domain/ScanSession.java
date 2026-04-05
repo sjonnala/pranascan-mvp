@@ -42,14 +42,19 @@ public class ScanSession extends AuditableEntity {
     @Column(name = "app_version", length = 32)
     private String appVersion;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "scan_type", nullable = false, length = 32)
+    private ScanType scanType = ScanType.STANDARD;
+
     @Column(name = "completed_at")
     private Instant completedAt;
 
     protected ScanSession() {
     }
 
-    public ScanSession(User user, String deviceModel, String appVersion) {
+    public ScanSession(User user, ScanType scanType, String deviceModel, String appVersion) {
         this.user = Objects.requireNonNull(user, "user must not be null");
+        this.scanType = Objects.requireNonNull(scanType, "scanType must not be null");
         this.deviceModel = normalize(deviceModel);
         this.appVersion = normalize(appVersion);
     }
@@ -68,6 +73,10 @@ public class ScanSession extends AuditableEntity {
 
     public String getAppVersion() {
         return appVersion;
+    }
+
+    public ScanType getScanType() {
+        return scanType;
     }
 
     public Instant getCompletedAt() {

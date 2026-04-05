@@ -1,19 +1,108 @@
 /**
- * frameAnalyzer — real quality-metric extraction from camera frame captures.
+ * frameAnalyzer — quality-metric and frame-sample utilities for the Vision Camera pipeline.
  *
- * Strategy: expo-camera v15 (SDK 51) does not expose per-pixel access in JS.
- * We capture low-quality JPEG frames via takePictureAsync and derive metrics
- * from JPEG data properties — a documented proxy used in mobile rPPG research
- * when native frame processors are unavailable (Sprint 3 target).
+ * All functions operate on pre-extracted centre-ROI RGB means that come from
+ * the `extractCenterRoiAverage` worklet inside CameraCapture.tsx.  The worklet
+ * reads raw pixel bytes directly from the Vision Camera frame buffer at 30 FPS
+ * (standard) or up to 60 FPS (Deep Dive), so there is no JPEG round-trip and
+ * no expo-camera dependency.
  *
- * Accuracy: ±25% for lighting, sufficient for quality-gate pass/fail at 0.4.
- * Motion detection is reliable for gross movement (walking vs stationary).
- *
- * Privacy: base64 strings are never stored or transmitted. Only the derived
- * FrameSample values ({t_ms, r_mean, g_mean, b_mean}) are sent to the backend.
+ * Privacy: only per-frame RGB mean values leave the worklet — never full pixel
+ * buffers or video frames.  Only FrameSample objects ({t_ms, r_mean, g_mean,
+ * b_mean}) are sent to the backend.
  */
 
 import { FrameSample } from '../types';
+
+export interface RgbTraceSample {
+  r_mean: number;
+  g_mean: number;
+  b_mean: number;
+}
+
+function clamp01(value: number): number {
+  return Math.max(0.0, Math.min(1.0, value));
+}
+
+/**
+ * Maps a centre-ROI RGB sample to a normalised lighting score.
+ *
+ * We use perceptual luminance so the score reflects apparent brightness
+ * instead of a single channel. The 0.4 gate threshold maps well to a
+ * mid-bright face ROI under ordinary indoor lighting.
+ */
+export function computeLightingScoreFromRgb(sample: RgbTraceSample): number {
+  const luminance = 0.299 * sample.r_mean + 0.587 * sample.g_mean + 0.114 * sample.b_mean;
+  return clamp01(luminance / 255.0);
+}
+
+/**
+ * Estimates motion stability from successive centre-ROI colour means.
+ *
+ * Large frame-to-frame RGB deltas usually indicate head motion, ROI drift, or
+ * lighting flicker. The score stays near 1.0 when the ROI is stable.
+ */
+export function computeMotionScoreFromRgb(
+  previous: RgbTraceSample | null,
+  current: RgbTraceSample,
+): number {
+  if (!previous) return 1.0;
+
+  const delta =
+    (Math.abs(current.r_mean - previous.r_mean) +
+      Math.abs(current.g_mean - previous.g_mean) +
+      Math.abs(current.b_mean - previous.b_mean)) /
+    3.0;
+
+  return clamp01(1.0 - delta / 60.0);
+}
+
+/**
+ * Builds a FrameSample from already-aggregated ROI RGB means.
+ */
+export function buildFrameSampleFromRgb(sample: RgbTraceSample, tMs: number): FrameSample {
+  return {
+    t_ms: tMs,
+    r_mean: sample.r_mean,
+    g_mean: sample.g_mean,
+    b_mean: sample.b_mean,
+  };
+}
+
+/**
+ * Heuristic face-presence confidence without a dedicated face detector.
+ *
+ * This remains a soft quality hint, not a detection claim. It rewards
+ * plausible skin-channel balance, sufficient brightness, and steady capture.
+ */
+export function computeFaceConfidenceFromRgb(
+  sample: RgbTraceSample,
+  lightingScore: number,
+  motionScore: number,
+): number {
+  const rgGap = Math.abs(sample.r_mean - sample.g_mean);
+  const gbGap = Math.abs(sample.g_mean - sample.b_mean);
+  const colourBalance = clamp01(1.0 - (rgGap + gbGap) / 160.0);
+
+  const raw = 0.05 + lightingScore * 0.5 + motionScore * 0.35 + colourBalance * 0.15;
+  return clamp01(raw);
+}
+
+// ---------------------------------------------------------------------------
+// Legacy JPEG-based functions (kept for test coverage only)
+//
+// These functions were part of the old expo-camera JPEG-capture pipeline that
+// was replaced by the Vision Camera frame-processor approach. They are no
+// longer called by any production code. They are retained here solely so that
+// the existing test suite in __tests__/frameAnalyzer.test.ts continues to
+// pass without modification.
+//
+// Do NOT use these in new features. The canonical replacements are:
+//   computeLightingScore  → computeLightingScoreFromRgb
+//   computeMotionScore    → computeMotionScoreFromRgb
+//   buildFrameSample      → buildFrameSampleFromRgb
+//   computeFaceConfidence → computeFaceConfidenceFromRgb
+// ---------------------------------------------------------------------------
 
 // JPEG size ranges at quality=0.05 for a typical front camera (640×480)
 // Measured empirically on Pixel 6a / iPhone 12 class devices.
@@ -21,13 +110,9 @@ const JPEG_DARK_SIZE = 1_200;   // chars — very dark frame
 const JPEG_BRIGHT_SIZE = 12_000; // chars — well-lit face
 
 /**
- * Estimates a normalised lighting score (0–1) from a base64 JPEG string.
- *
- * Darker images compress more aggressively → shorter base64 string.
- * Brighter, higher-texture images → larger JPEG → longer base64 string.
- *
- * This is a deterministic, reproducible heuristic. Sprint 3 replaces this
- * with a native frame processor for true per-pixel luminance.
+ * @deprecated Use {@link computeLightingScoreFromRgb} instead.
+ * Legacy heuristic: estimates lighting from JPEG base64 string length.
+ * Retained for backward-compatibility with existing tests only.
  */
 export function computeLightingScore(base64: string): number {
   if (!base64 || base64.length < 50) return 0.0;
@@ -36,15 +121,9 @@ export function computeLightingScore(base64: string): number {
 }
 
 /**
- * Computes a motion stability score (0–1) from two consecutive JPEG frames.
- * Score of 1.0 means perfectly stable; lower values indicate motion.
- *
- * Method:
- *   1. Length ratio: camera scene changes alter JPEG file size.
- *   2. Character sampling: high-frequency character differences indicate
- *      changed image content between frames.
- *
- * Threshold for quality gate: motion_score ≥ 0.95 required.
+ * @deprecated Use {@link computeMotionScoreFromRgb} instead.
+ * Legacy heuristic: estimates motion from consecutive JPEG base64 strings.
+ * Retained for backward-compatibility with existing tests only.
  */
 export function computeMotionScore(prevBase64: string, currBase64: string): number {
   if (!prevBase64 || !currBase64 || prevBase64.length < 50 || currBase64.length < 50) {
@@ -82,13 +161,9 @@ function median(values: number[]): number {
 }
 
 /**
- * Builds a FrameSample from a base64-encoded JPEG and a timestamp.
- *
- * Estimates per-channel means using luminance derived from JPEG analysis.
- * Face rPPG signal is strongest in the green channel; we apply a skin-tone
- * bias (R > G > B) that reflects typical face colouring.
- *
- * Sprint 3: replace with native frame processor for true RGB means.
+ * @deprecated Use {@link buildFrameSampleFromRgb} instead.
+ * Legacy: builds a FrameSample from a base64 JPEG using a luminance heuristic.
+ * Retained for backward-compatibility with existing tests only.
  */
 export function buildFrameSample(base64: string, tMs: number): FrameSample {
   const luminance = computeLightingScore(base64) * 255;
@@ -102,31 +177,9 @@ export function buildFrameSample(base64: string, tMs: number): FrameSample {
 }
 
 /**
- * Estimates face-presence confidence (0–1) from observable JPEG properties.
- *
- * A native face detector (expo-face-detector / ML Kit) is the Sprint 3 target.
- * Until then, three observable properties are combined without any ML dependency:
- *
- *   1. **Lighting window** — human faces need normalised luminance in [0.25, 0.88].
- *      Below 0.25 (very dark) the face is obscured; above 0.88 (blown-out) the
- *      signal is unusable. Values outside the window degrade the score linearly.
- *
- *   2. **JPEG size signature** — at quality=0.05, a front-facing selfie at
- *      ~50–70 cm produces JPEG payloads in the 3 500–9 500-char range.
- *      Frames below (empty/very dark scene) or well above (full texture, no face
- *      centred) that zone score proportionally lower.
- *
- *   3. **Motion stability bonus** — steady frames (motionScore ≥ 0.95) add a
- *      small contribution (+0.10 max). This is a minor bonus, not a gate; motion
- *      has its own dedicated quality-gate dimension.
- *
- * Gate threshold: face_confidence > 0.80 (matches backend `min_face_confidence`).
- *
- * Fallback: returns 0.5 (uncertain, below gate) when base64 is too short to
- * evaluate — rather than the old constant 0.85 proxy which always passed.
- *
- * Sprint 3: replace with `expo-face-detector` (ML Kit) for pixel-accurate
- * bounding-box detection, confidence score, and landmark positions.
+ * @deprecated Use {@link computeFaceConfidenceFromRgb} instead.
+ * Legacy heuristic: estimates face confidence from JPEG base64 properties.
+ * Retained for backward-compatibility with existing tests only.
  */
 export function computeFaceConfidence(
   base64: string,

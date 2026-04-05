@@ -1,161 +1,178 @@
 /**
- * Tests for CameraCapture component.
- *
- * expo-camera is mocked so tests run in Node/Jest without native binaries.
- * The mock exposes:
- *   - CameraView: renders a plain View, ref has takePictureAsync
- *   - useCameraPermissions: configurable per-test
+ * Tests for CameraCapture with Vision Camera frame processing.
  */
 
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
-// ─── expo-camera mock ─────────────────────────────────────────────────────────
+type MockRgbFrame = {
+  r: number;
+  g: number;
+  b: number;
+};
 
-const mockTakePictureAsync = jest.fn();
+let mockPermissionGranted = true;
+let mockRequestPermission = jest.fn<Promise<boolean>, []>();
+let mockFrameSamples: MockRgbFrame[] = [];
 
-jest.mock('expo-camera', () => {
+function mockBuildFrameBuffer(sample: MockRgbFrame): ArrayBuffer {
+  const { Platform } = require('react-native');
+  const width = 120;
+  const height = 120;
+  const bytesPerPixel = 4;
+  const bytesPerRow = width * bytesPerPixel;
+  const buffer = new Uint8Array(bytesPerRow * height);
+  const isBgra = Platform.OS === 'ios';
+
+  for (let index = 0; index < buffer.length; index += bytesPerPixel) {
+    if (isBgra) {
+      buffer[index] = sample.b;
+      buffer[index + 1] = sample.g;
+      buffer[index + 2] = sample.r;
+      buffer[index + 3] = 255;
+    } else {
+      buffer[index] = sample.r;
+      buffer[index + 1] = sample.g;
+      buffer[index + 2] = sample.b;
+      buffer[index + 3] = 255;
+    }
+  }
+
+  return buffer.buffer;
+}
+
+jest.mock('react-native-worklets-core', () => ({
+  Worklets: {
+    createRunOnJS: (fn: (...args: unknown[]) => unknown) => fn,
+  },
+}));
+
+jest.mock('react-native-vision-camera', () => {
   const ReactInMock = require('react');
+  const { act } = require('@testing-library/react-native');
   const { View } = require('react-native');
 
-  const CameraView = ReactInMock.forwardRef(
-    (
-      {
-        children,
-        testID,
-        style,
-      }: { children?: React.ReactNode; testID?: string; style?: object },
-      ref: React.Ref<unknown>,
-    ) => {
-      ReactInMock.useImperativeHandle(ref, () => ({
-        takePictureAsync: mockTakePictureAsync,
-      }));
-      return ReactInMock.createElement(View, { testID, style }, children);
-    },
-  );
-  CameraView.displayName = 'CameraView';
+  const Camera = ({ frameProcessor, testID, style }: any) => {
+    ReactInMock.useEffect(() => {
+      if (!frameProcessor) {
+        return undefined;
+      }
+
+      const timers = mockFrameSamples.map((sample, index) =>
+        setTimeout(() => {
+          act(() => {
+            frameProcessor.frameProcessor({
+              width: 120,
+              height: 120,
+              bytesPerRow: 120 * 4,
+              pixelFormat: 'rgb',
+              toArrayBuffer: () => mockBuildFrameBuffer(sample),
+            });
+          });
+        }, index * 5)
+      );
+
+      return () => {
+        timers.forEach(clearTimeout);
+      };
+    }, [frameProcessor]);
+
+    return ReactInMock.createElement(View, { testID, style });
+  };
 
   return {
-    CameraView,
-    useCameraPermissions: jest.fn(() => [
-      { granted: true, status: 'granted' },
-      jest.fn().mockResolvedValue({ granted: true, status: 'granted' }),
-    ]),
+    Camera,
+    useCameraPermission: jest.fn(() => ({
+      hasPermission: mockPermissionGranted,
+      requestPermission: mockRequestPermission,
+    })),
+    useCameraDevice: jest.fn(() => ({
+      id: 'front-camera',
+      formats: [{ minFps: 30, maxFps: 30 }],
+    })),
+    useCameraFormat: jest.fn(() => ({ minFps: 30, maxFps: 30 })),
+    useFrameProcessor: jest.fn((processor: (frame: unknown) => void) => ({
+      frameProcessor: processor,
+      type: 'readonly',
+    })),
+    runAtTargetFps: jest.fn((_fps: number, callback: () => void) => callback()),
   };
 });
 
-// ─── Import after mock ────────────────────────────────────────────────────────
-
-import { useCameraPermissions } from 'expo-camera';
 import { CameraCapture } from '../src/components/CameraCapture';
 import { QualityMetrics } from '../src/types';
 
-const mockUseCameraPermissions = useCameraPermissions as jest.MockedFunction<
-  typeof useCameraPermissions
->;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const MOCK_B64 = 'A'.repeat(6_000); // simulates a well-lit JPEG frame
-
-function makeGrantedPermission() {
-  const requestFn = jest.fn().mockResolvedValue({ granted: true, status: 'granted' });
-  mockUseCameraPermissions.mockReturnValue([
-    { granted: true, status: 'granted', expires: 'never', canAskAgain: true },
-    requestFn,
-    requestFn,
-  ] as unknown as ReturnType<typeof useCameraPermissions>);
-  return requestFn;
-}
-
-function makeDeniedPermission() {
-  const requestFn = jest.fn().mockResolvedValue({ granted: false, status: 'denied' });
-  mockUseCameraPermissions.mockReturnValue([
-    { granted: false, status: 'denied', expires: 'never', canAskAgain: true },
-    requestFn,
-    requestFn,
-  ] as unknown as ReturnType<typeof useCameraPermissions>);
-  return requestFn;
-}
-
-function makeUndeterminedPermission() {
-  const requestFn = jest.fn().mockResolvedValue({ granted: false, status: 'undetermined' });
-  mockUseCameraPermissions.mockReturnValue([
-    null,
-    requestFn,
-    requestFn,
-  ] as unknown as ReturnType<typeof useCameraPermissions>);
-  return requestFn;
-}
-
 const noop = () => {};
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+function setFrameSamples(samples: MockRgbFrame[]) {
+  mockFrameSamples = samples;
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockTakePictureAsync.mockResolvedValue({ base64: MOCK_B64, uri: 'mock://frame.jpg' });
-  makeGrantedPermission();
+  mockPermissionGranted = true;
+  mockRequestPermission = jest.fn().mockResolvedValue(true);
+  setFrameSamples([
+    { r: 150, g: 132, b: 112 },
+    { r: 148, g: 130, b: 110 },
+    { r: 149, g: 131, b: 111 },
+    { r: 147, g: 129, b: 109 },
+    { r: 150, g: 132, b: 112 },
+  ]);
 });
 
-// ── Permission states ────────────────────────────────────────────────────────
-
 describe('permission states', () => {
-  it('renders loading state while permission is undetermined', () => {
-    makeUndeterminedPermission();
-    const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />,
-    );
-    expect(getByTestId('camera-capture')).toBeTruthy();
-  });
+  it('renders permission UI when camera permission is not granted', () => {
+    mockPermissionGranted = false;
 
-  it('renders permission denied UI when camera not granted', () => {
-    makeDeniedPermission();
     const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />
     );
+
     expect(getByTestId('permission-message')).toBeTruthy();
     expect(getByTestId('allow-camera')).toBeTruthy();
   });
 
   it('calls requestPermission when Allow Camera is pressed', () => {
-    const requestFn = makeDeniedPermission();
+    mockPermissionGranted = false;
+
     const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />
     );
+
     fireEvent.press(getByTestId('allow-camera'));
-    expect(requestFn).toHaveBeenCalledTimes(1);
+    expect(mockRequestPermission).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onCancel from permission-denied screen', () => {
-    makeDeniedPermission();
+  it('calls onCancel from permission screen', () => {
+    mockPermissionGranted = false;
     const onCancel = jest.fn();
+
     const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={onCancel} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={onCancel} />
     );
+
     fireEvent.press(getByTestId('cancel-scan'));
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it('renders camera view when permission granted', () => {
-    makeGrantedPermission();
+  it('renders camera view when permission is granted', () => {
     const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />
     );
+
     expect(getByTestId('camera-view')).toBeTruthy();
     expect(getByTestId('face-guide')).toBeTruthy();
   });
 });
 
-// ── Pre-scan idle state ──────────────────────────────────────────────────────
-
-describe('idle state (before scan starts)', () => {
+describe('idle state', () => {
   it('shows Start button and timer at 30s', () => {
     const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />
     );
+
     expect(getByTestId('start-scan')).toBeTruthy();
-    // React Native renders {timeRemaining}s as a children array [30, "s"]
     const timerChildren = getByTestId('timer').props.children;
     const timerText = Array.isArray(timerChildren) ? timerChildren.join('') : String(timerChildren);
     expect(timerText).toBe('30s');
@@ -163,62 +180,54 @@ describe('idle state (before scan starts)', () => {
 
   it('shows progress bar', () => {
     const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />
     );
+
     expect(getByTestId('progress-bar')).toBeTruthy();
   });
 
   it('does not show scanning indicator before scan starts', () => {
     const { queryByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />
     );
+
     expect(queryByTestId('scanning-indicator')).toBeNull();
   });
 });
 
-// ── Scan start ───────────────────────────────────────────────────────────────
-
-describe('scan start', () => {
-  it('shows Cancel button after pressing Start', async () => {
+describe('scan lifecycle', () => {
+  it('shows Cancel button and scanning indicator after pressing Start', async () => {
     const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />
     );
+
     fireEvent.press(getByTestId('start-scan'));
+
     await waitFor(() => expect(getByTestId('cancel-scan')).toBeTruthy());
+    expect(getByTestId('scanning-indicator')).toBeTruthy();
   });
 
-  it('shows scanning indicator after start', async () => {
-    const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />,
-    );
-    fireEvent.press(getByTestId('start-scan'));
-    await waitFor(() => expect(getByTestId('scanning-indicator')).toBeTruthy());
-  });
-});
-
-// ── Cancel ───────────────────────────────────────────────────────────────────
-
-describe('cancel', () => {
   it('calls onCancel when Cancel pressed during scan', async () => {
     const onCancel = jest.fn();
     const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={onCancel} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={onCancel} />
     );
+
     fireEvent.press(getByTestId('start-scan'));
-    await waitFor(() => getByTestId('cancel-scan'));
+    await waitFor(() => expect(getByTestId('cancel-scan')).toBeTruthy());
     fireEvent.press(getByTestId('cancel-scan'));
+
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });
 
-// ── Quality update ───────────────────────────────────────────────────────────
-
-describe('quality update', () => {
-  it('calls onQualityUpdate with metrics object after frame capture', async () => {
+describe('quality updates', () => {
+  it('calls onQualityUpdate with metrics derived from RGB traces', async () => {
     const onQualityUpdate = jest.fn();
     const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={onQualityUpdate} onCancel={noop} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={onQualityUpdate} onCancel={noop} />
     );
+
     fireEvent.press(getByTestId('start-scan'));
 
     await waitFor(() => expect(onQualityUpdate).toHaveBeenCalled(), { timeout: 2000 });
@@ -230,11 +239,12 @@ describe('quality update', () => {
     expect(typeof metrics.audio_snr_db).toBe('number');
   });
 
-  it('lighting_score is in [0, 1]', async () => {
+  it('lighting_score stays in [0, 1]', async () => {
     const onQualityUpdate = jest.fn();
     const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={onQualityUpdate} onCancel={noop} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={onQualityUpdate} onCancel={noop} />
     );
+
     fireEvent.press(getByTestId('start-scan'));
 
     await waitFor(() => expect(onQualityUpdate).toHaveBeenCalled(), { timeout: 2000 });
@@ -243,48 +253,57 @@ describe('quality update', () => {
     expect(metrics.lighting_score).toBeLessThanOrEqual(1);
   });
 
-  it('face_confidence is a computed value in [0, 1], not the old 0.85 constant', async () => {
-    // MOCK_B64 = 'A'.repeat(6_000) → lightingScore ≈ 0.44, face in optimal zone → ≥ 0.80
+  it('face_confidence is high for a stable, well-lit ROI', async () => {
+    setFrameSamples([
+      { r: 170, g: 150, b: 130 },
+      { r: 169, g: 149, b: 129 },
+      { r: 171, g: 151, b: 131 },
+      { r: 170, g: 150, b: 130 },
+      { r: 169, g: 149, b: 129 },
+    ]);
+
     const onQualityUpdate = jest.fn();
     const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={onQualityUpdate} onCancel={noop} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={onQualityUpdate} onCancel={noop} />
     );
+
     fireEvent.press(getByTestId('start-scan'));
 
     await waitFor(() => expect(onQualityUpdate).toHaveBeenCalled(), { timeout: 2000 });
     const [metrics]: [QualityMetrics] = onQualityUpdate.mock.calls[0];
-    expect(metrics.face_confidence).toBeGreaterThanOrEqual(0);
-    expect(metrics.face_confidence).toBeLessThanOrEqual(1);
-    // Should NOT always be the old hardcoded proxy value — it is now computed.
-    // For the well-lit MOCK_B64 frame the heuristic returns ≥ 0.80.
+
     expect(metrics.face_confidence).toBeGreaterThanOrEqual(0.8);
   });
 
-  it('face_confidence varies with dark mock frame (< 0.80 for under-lit input)', async () => {
-    // Simulate a very dark frame (short base64) so face heuristic scores low
-    const DARK_B64 = 'A'.repeat(600); // tiny JPEG → dark/empty scene
-    mockTakePictureAsync.mockResolvedValue({ base64: DARK_B64, uri: 'mock://dark.jpg' });
+  it('face_confidence falls for a dark ROI', async () => {
+    setFrameSamples([
+      { r: 25, g: 22, b: 18 },
+      { r: 24, g: 21, b: 17 },
+      { r: 25, g: 22, b: 18 },
+      { r: 24, g: 21, b: 17 },
+      { r: 25, g: 22, b: 18 },
+    ]);
 
     const onQualityUpdate = jest.fn();
     const { getByTestId } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={onQualityUpdate} onCancel={noop} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={onQualityUpdate} onCancel={noop} />
     );
+
     fireEvent.press(getByTestId('start-scan'));
 
     await waitFor(() => expect(onQualityUpdate).toHaveBeenCalled(), { timeout: 2000 });
     const [metrics]: [QualityMetrics] = onQualityUpdate.mock.calls[0];
-    // Very dark frame → face confidence below gate threshold
+
     expect(metrics.face_confidence).toBeLessThan(0.8);
   });
 });
 
-// ── No diagnostic language ───────────────────────────────────────────────────
-
 describe('no diagnostic language', () => {
   it('renders no diagnostic text in idle state', () => {
     const { toJSON } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />
     );
+
     const tree = JSON.stringify(toJSON());
     const forbidden = ['diagnosis', 'diagnostic', 'disease', 'medical condition', 'disorder'];
     for (const word of forbidden) {
@@ -292,11 +311,12 @@ describe('no diagnostic language', () => {
     }
   });
 
-  it('renders no diagnostic text in denied-permission state', () => {
-    makeDeniedPermission();
+  it('renders no diagnostic text in permission state', () => {
+    mockPermissionGranted = false;
     const { toJSON } = render(
-      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />,
+      <CameraCapture onComplete={noop} onQualityUpdate={noop} onCancel={noop} />
     );
+
     const tree = JSON.stringify(toJSON());
     expect(tree.toLowerCase()).not.toContain('diagnosis');
   });

@@ -1,5 +1,7 @@
 """Pydantic v2 schemas for compute-only scan evaluation payloads."""
 
+from enum import StrEnum
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -12,6 +14,11 @@ class FrameSampleSchema(BaseModel):
     b_mean: float = Field(..., ge=0.0, le=255.0)
 
 
+class ScanType(StrEnum):
+    STANDARD = "standard"
+    DEEP_DIVE = "deep_dive"
+
+
 class ScanResultSubmit(BaseModel):
     """
     Wellness indicator values submitted after a scan session.
@@ -22,10 +29,15 @@ class ScanResultSubmit(BaseModel):
     These are wellness indicators, not diagnostic values.
     """
 
+    scan_type: ScanType = Field(
+        default=ScanType.STANDARD,
+        description="Routes the scan to either selfie POS processing or contact morphology processing.",
+    )
+
     frame_data: list[FrameSampleSchema] | None = Field(
         default=None,
         description="Per-frame RGB means for server-side rPPG. Overrides client-computed values.",
-        max_length=1800,  # ~60s at 30fps ceiling
+        max_length=4000,  # ~60s at 60fps ceiling with small headroom
     )
 
     audio_samples: list[float] | None = Field(
@@ -48,6 +60,8 @@ class ScanResultSubmit(BaseModel):
 
     flags: list[str] = Field(default_factory=list)
 
+    user_height_cm: float | None = Field(default=None, ge=100.0, le=250.0)
+
     frame_r_mean: float | None = Field(default=None, ge=0.0, le=255.0)
     frame_g_mean: float | None = Field(default=None, ge=0.0, le=255.0)
     frame_b_mean: float | None = Field(default=None, ge=0.0, le=255.0)
@@ -61,6 +75,8 @@ class ScanResultSubmit(BaseModel):
             "motion_detected",
             "face_not_detected",
             "partial_occlusion_suspected",
+            "poor_thumb_contact",
+            "borderline_thumb_contact",
             "high_noise",
             "borderline_noise",
             "accented_vowel_accommodated",

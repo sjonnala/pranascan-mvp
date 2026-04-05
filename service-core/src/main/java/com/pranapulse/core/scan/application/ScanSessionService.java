@@ -7,6 +7,7 @@ import com.pranapulse.core.scan.domain.ScanResult;
 import com.pranapulse.core.scan.domain.ScanSession;
 import com.pranapulse.core.scan.repository.ScanResultRepository;
 import com.pranapulse.core.scan.repository.ScanSessionRepository;
+import com.pranapulse.core.shared.error.ConflictException;
 import com.pranapulse.core.shared.error.NotFoundException;
 import java.time.Instant;
 import java.util.UUID;
@@ -43,7 +44,12 @@ public class ScanSessionService {
     public ScanSession createSession(UUID userId, CreateScanSessionCommand command) {
         consentService.requireActiveConsent(userId);
         User user = userRepository.getReferenceById(userId);
-        ScanSession session = new ScanSession(user, command.deviceModel(), command.appVersion());
+        ScanSession session = new ScanSession(
+                user,
+                command.scanType(),
+                command.deviceModel(),
+                command.appVersion()
+        );
         return scanSessionRepository.save(session);
     }
 
@@ -54,6 +60,9 @@ public class ScanSessionService {
 
         session.ensureOwnedBy(actingUserId);
         session.ensureCompletable();
+        if (command.scanType() != session.getScanType()) {
+            throw new ConflictException("scan_type does not match the session scan type.");
+        }
 
         ScanEvaluationOutcome outcome = scanEvaluationService.evaluate(command);
         Instant completedAt = Instant.now();

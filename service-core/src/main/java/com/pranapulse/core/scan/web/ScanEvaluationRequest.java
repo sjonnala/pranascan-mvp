@@ -1,6 +1,7 @@
 package com.pranapulse.core.scan.web;
 
 import com.pranapulse.core.scan.application.ScanEvaluationCommand;
+import com.pranapulse.core.scan.domain.ScanType;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import jakarta.validation.constraints.AssertTrue;
@@ -13,7 +14,8 @@ import java.util.List;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record ScanEvaluationRequest(
-        @Size(max = 1800) List<@Valid FrameSampleRequest> frameData,
+        ScanType scanType,
+        @Size(max = 4000) List<@Valid FrameSampleRequest> frameData,
         @Size(max = 22050) List<Double> audioSamples,
         @Size(min = 128, max = 5_242_880) byte[] imageBytes,
         @Size(min = 128, max = 20_971_520) byte[] videoBytes,
@@ -28,6 +30,7 @@ public record ScanEvaluationRequest(
         @DecimalMin("0.0") @DecimalMax("1.0") Double faceConfidence,
         Double audioSnrDb,
         List<String> flags,
+        @DecimalMin("100.0") @DecimalMax("250.0") Double userHeightCm,
         @DecimalMin("0.0") @DecimalMax("255.0") Double frameRMean,
         @DecimalMin("0.0") @DecimalMax("255.0") Double frameGMean,
         @DecimalMin("0.0") @DecimalMax("255.0") Double frameBMean
@@ -51,6 +54,7 @@ public record ScanEvaluationRequest(
                         .toList();
 
         return new ScanEvaluationCommand(
+                ScanType.defaultIfNull(scanType),
                 mappedFrameData,
                 audioSamples,
                 imageBytes,
@@ -66,6 +70,7 @@ public record ScanEvaluationRequest(
                 faceConfidence,
                 audioSnrDb,
                 flags != null ? flags : List.of(),
+                userHeightCm,
                 frameRMean,
                 frameGMean,
                 frameBMean

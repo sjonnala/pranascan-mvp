@@ -7,7 +7,7 @@ import grpc
 import scan_intelligence_pb2
 import scan_intelligence_pb2_grpc
 from app.config import settings
-from app.schemas.scan import FrameSampleSchema, ScanResultSubmit
+from app.schemas.scan import FrameSampleSchema, ScanResultSubmit, ScanType
 from app.services.scan_evaluation_service import evaluate_scan_submission
 from app.services.vitals_extraction import extract_vitals_from_media
 
@@ -76,6 +76,8 @@ def _scan_result_submit_from_proto(
         face_confidence=_optional_double(request, "face_confidence"),
         audio_snr_db=_optional_double(request, "audio_snr_db"),
         flags=list(request.flags),
+        scan_type=_scan_type_from_proto(request.scan_type),
+        user_height_cm=_optional_double(request, "user_height_cm"),
         frame_r_mean=_optional_double(request, "frame_r_mean"),
         frame_g_mean=_optional_double(request, "frame_g_mean"),
         frame_b_mean=_optional_double(request, "frame_b_mean"),
@@ -95,6 +97,7 @@ def _scan_evaluation_response_from_domain(
     _set_optional_double(response, "hr_bpm", evaluation.submission.hr_bpm)
     _set_optional_double(response, "hrv_ms", evaluation.submission.hrv_ms)
     _set_optional_double(response, "spo2", evaluation.spo2)
+    _set_optional_double(response, "stiffness_index", evaluation.stiffness_index)
     _set_optional_double(response, "respiratory_rate", evaluation.submission.respiratory_rate)
     _set_optional_double(response, "voice_jitter_pct", evaluation.submission.voice_jitter_pct)
     _set_optional_double(response, "voice_shimmer_pct", evaluation.submission.voice_shimmer_pct)
@@ -114,6 +117,12 @@ def _scan_evaluation_response_from_domain(
 
 def _optional_double(message, field_name: str) -> float | None:
     return getattr(message, field_name) if message.HasField(field_name) else None
+
+
+def _scan_type_from_proto(value: int) -> ScanType:
+    if value == scan_intelligence_pb2.SCAN_TYPE_DEEP_DIVE:
+        return ScanType.DEEP_DIVE
+    return ScanType.STANDARD
 
 
 def _set_optional_double(message, field_name: str, value: float | None) -> None:

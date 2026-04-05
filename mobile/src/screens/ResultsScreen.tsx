@@ -16,7 +16,7 @@ import {
   View,
 } from 'react-native';
 import { getFeedbackForSession, getScanSession, submitScanFeedback } from '../api/client';
-import { ScanFeedback, ScanResult, UsefulResponse } from '../types';
+import { ScanFeedback, ScanResult, ScanSession, UsefulResponse } from '../types';
 
 interface MetricCardProps {
   label: string;
@@ -52,6 +52,7 @@ const NPS_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 export function ResultsScreen({ sessionId, onScanAgain }: ResultsScreenProps) {
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [session, setSession] = useState<ScanSession | null>(null);
   const [feedback, setFeedback] = useState<ScanFeedback | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +76,7 @@ export function ResultsScreen({ sessionId, onScanAgain }: ResultsScreenProps) {
           return;
         }
 
+        setSession(sessionData.session);
         setResult(sessionData.result);
         setFeedback(existingFeedback);
       } catch {
@@ -148,7 +150,9 @@ export function ResultsScreen({ sessionId, onScanAgain }: ResultsScreenProps) {
     >
       <View style={styles.header}>
         <Text style={styles.checkmark}>✓</Text>
-        <Text style={styles.title}>Wellness Check Complete</Text>
+        <Text style={styles.title}>
+          {session?.scan_type === 'deep_dive' ? 'Weekly Deep Dive Complete' : 'Wellness Check Complete'}
+        </Text>
         <Text style={styles.subtitle}>
           Scan quality: {qualityPct}% · {new Date(result.created_at).toLocaleTimeString()}
         </Text>
@@ -182,32 +186,47 @@ export function ResultsScreen({ sessionId, onScanAgain }: ResultsScreenProps) {
         />
       </View>
 
-      <Text style={styles.sectionTitle}>Breathing</Text>
-      <MetricCard
-        label="Respiratory Rate"
-        value={result.respiratory_rate}
-        unit="br/min"
-        description="Breathing rate wellness indicator"
-        testID="metric-rr"
-      />
+      {session?.scan_type === 'deep_dive' ? (
+        <>
+          <Text style={styles.sectionTitle}>Weekly Deep Dive</Text>
+          <MetricCard
+            label="Stiffness Index"
+            value={result.stiffness_index}
+            unit="m/s"
+            description="Pulse-wave stiffness estimate from the thumb-press scan"
+            testID="metric-stiffness-index"
+          />
+        </>
+      ) : (
+        <>
+          <Text style={styles.sectionTitle}>Breathing</Text>
+          <MetricCard
+            label="Respiratory Rate"
+            value={result.respiratory_rate}
+            unit="br/min"
+            description="Breathing rate wellness indicator"
+            testID="metric-rr"
+          />
 
-      <Text style={styles.sectionTitle}>Voice Wellness</Text>
-      <View style={styles.metricsRow}>
-        <MetricCard
-          label="Voice Jitter"
-          value={result.voice_jitter_pct}
-          unit="%"
-          description="Vocal frequency variation"
-          testID="metric-jitter"
-        />
-        <MetricCard
-          label="Voice Shimmer"
-          value={result.voice_shimmer_pct}
-          unit="%"
-          description="Vocal amplitude variation"
-          testID="metric-shimmer"
-        />
-      </View>
+          <Text style={styles.sectionTitle}>Voice Wellness</Text>
+          <View style={styles.metricsRow}>
+            <MetricCard
+              label="Voice Jitter"
+              value={result.voice_jitter_pct}
+              unit="%"
+              description="Vocal frequency variation"
+              testID="metric-jitter"
+            />
+            <MetricCard
+              label="Voice Shimmer"
+              value={result.voice_shimmer_pct}
+              unit="%"
+              description="Vocal amplitude variation"
+              testID="metric-shimmer"
+            />
+          </View>
+        </>
+      )}
 
       {result.flags.length > 0 && (
         <View style={styles.flagsBox} testID="result-flags">

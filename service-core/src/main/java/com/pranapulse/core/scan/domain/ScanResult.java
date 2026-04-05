@@ -49,6 +49,9 @@ public class ScanResult extends AuditableEntity {
     @Column(name = "spo2")
     private Double spo2;
 
+    @Column(name = "stiffness_index")
+    private Double stiffnessIndex;
+
     @Column(name = "respiratory_rate")
     private Double respiratoryRate;
 
@@ -120,6 +123,7 @@ public class ScanResult extends AuditableEntity {
         this.hrBpm = outcome.hrBpm();
         this.hrvMs = outcome.hrvMs();
         this.spo2 = outcome.spo2();
+        this.stiffnessIndex = outcome.stiffnessIndex();
         this.respiratoryRate = outcome.respiratoryRate();
         this.voiceJitterPct = outcome.voiceJitterPct();
         this.voiceShimmerPct = outcome.voiceShimmerPct();
@@ -156,6 +160,10 @@ public class ScanResult extends AuditableEntity {
 
     public Double getSpo2() {
         return spo2;
+    }
+
+    public Double getStiffnessIndex() {
+        return stiffnessIndex;
     }
 
     public Double getRespiratoryRate() {

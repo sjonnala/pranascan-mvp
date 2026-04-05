@@ -8,6 +8,7 @@ import com.pranapulse.intelligence.grpc.scan.v1.FrameSample;
 import com.pranapulse.intelligence.grpc.scan.v1.ScanEvaluationRequest;
 import com.pranapulse.intelligence.grpc.scan.v1.ScanEvaluationResponse;
 import com.pranapulse.intelligence.grpc.scan.v1.ScanIntelligenceServiceGrpc;
+import com.pranapulse.intelligence.grpc.scan.v1.ScanType;
 import io.grpc.StatusRuntimeException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -40,6 +41,7 @@ public class GrpcIntelligenceServiceGateway implements IntelligenceServiceGatewa
 
     private static ScanEvaluationRequest toGrpcRequest(ScanEvaluationCommand command) {
         ScanEvaluationRequest.Builder builder = ScanEvaluationRequest.newBuilder()
+                .setScanType(toGrpcScanType(command.scanType()))
                 .setQualityScore(command.qualityScore())
                 .addAllAudioSamples(command.audioSamples() != null ? command.audioSamples() : List.of())
                 .addAllFlags(command.flags());
@@ -88,6 +90,9 @@ public class GrpcIntelligenceServiceGateway implements IntelligenceServiceGatewa
         if (command.audioSnrDb() != null) {
             builder.setAudioSnrDb(command.audioSnrDb());
         }
+        if (command.userHeightCm() != null) {
+            builder.setUserHeightCm(command.userHeightCm());
+        }
         if (command.frameRMean() != null) {
             builder.setFrameRMean(command.frameRMean());
         }
@@ -101,11 +106,19 @@ public class GrpcIntelligenceServiceGateway implements IntelligenceServiceGatewa
         return builder.build();
     }
 
+    private static ScanType toGrpcScanType(com.pranapulse.core.scan.domain.ScanType scanType) {
+        return switch (scanType) {
+            case STANDARD -> ScanType.SCAN_TYPE_STANDARD;
+            case DEEP_DIVE -> ScanType.SCAN_TYPE_DEEP_DIVE;
+        };
+    }
+
     private static ScanEvaluationOutcome toOutcome(ScanEvaluationResponse response) {
         return new ScanEvaluationOutcome(
                 response.hasHrBpm() ? response.getHrBpm() : null,
                 response.hasHrvMs() ? response.getHrvMs() : null,
                 response.hasSpo2() ? response.getSpo2() : null,
+                response.hasStiffnessIndex() ? response.getStiffnessIndex() : null,
                 response.hasRespiratoryRate() ? response.getRespiratoryRate() : null,
                 response.hasVoiceJitterPct() ? response.getVoiceJitterPct() : null,
                 response.hasVoiceShimmerPct() ? response.getVoiceShimmerPct() : null,

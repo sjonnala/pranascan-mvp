@@ -4,7 +4,7 @@
 
 import { useCallback, useState } from 'react';
 import { completeScanSession, createScanSession, getScanSession } from '../api/client';
-import { ScanResult, ScanResultPayload, ScanSessionWithResult } from '../types';
+import { ScanResult, ScanResultPayload, ScanSessionWithResult, ScanType } from '../types';
 
 interface ScanErrorDetail {
   message?: string;
@@ -25,7 +25,7 @@ export interface UseScanReturn {
   sessionId: string | null;
   result: ScanResult | null;
   error: string | null;
-  startScan: () => Promise<string>;
+  startScan: (scanType: ScanType) => Promise<string>;
   submitResults: (payload: ScanResultPayload) => Promise<ScanResult>;
   fetchResult: (sessionId: string) => Promise<ScanSessionWithResult>;
   setPhase: (phase: ScanPhase) => void;
@@ -38,11 +38,11 @@ export function useScan(): UseScanReturn {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const startScan = useCallback(async (): Promise<string> => {
+  const startScan = useCallback(async (scanType: ScanType): Promise<string> => {
     setPhase('creating_session');
     setError(null);
     try {
-      const session = await createScanSession();
+      const session = await createScanSession(scanType);
       setSessionId(session.id);
       setPhase('camera');
       return session.id;

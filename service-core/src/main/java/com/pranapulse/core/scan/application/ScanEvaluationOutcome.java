@@ -6,6 +6,7 @@ public record ScanEvaluationOutcome(
         Double hrBpm,
         Double hrvMs,
         Double spo2,
+        Double stiffnessIndex,
         Double respiratoryRate,
         Double voiceJitterPct,
         Double voiceShimmerPct,

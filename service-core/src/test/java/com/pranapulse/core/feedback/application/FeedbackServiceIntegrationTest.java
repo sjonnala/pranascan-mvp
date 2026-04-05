@@ -15,6 +15,7 @@ import com.pranapulse.core.scan.application.ScanEvaluationOutcome;
 import com.pranapulse.core.scan.application.ScanEvaluationService;
 import com.pranapulse.core.scan.application.ScanSessionService;
 import com.pranapulse.core.scan.domain.ScanSession;
+import com.pranapulse.core.scan.domain.ScanType;
 import com.pranapulse.core.shared.error.ConflictException;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -48,7 +49,7 @@ class FeedbackServiceIntegrationTest {
 
         ScanSession session = scanSessionService.createSession(
                 user.getId(),
-                new CreateScanSessionCommand("Pixel 9", "1.2.0")
+                new CreateScanSessionCommand(ScanType.STANDARD, "Pixel 9", "1.2.0")
         );
         scanSessionService.completeSession(user.getId(), session.getId(), sampleCommand());
 
@@ -76,7 +77,7 @@ class FeedbackServiceIntegrationTest {
 
         ScanSession session = scanSessionService.createSession(
                 user.getId(),
-                new CreateScanSessionCommand("Pixel 9", "1.2.0")
+                new CreateScanSessionCommand(ScanType.STANDARD, "Pixel 9", "1.2.0")
         );
         scanSessionService.completeSession(user.getId(), session.getId(), sampleCommand());
 
@@ -91,6 +92,7 @@ class FeedbackServiceIntegrationTest {
 
     private static ScanEvaluationCommand sampleCommand() {
         return new ScanEvaluationCommand(
+                ScanType.STANDARD,
                 null,
                 null,
                 null,
@@ -106,6 +108,7 @@ class FeedbackServiceIntegrationTest {
                 0.94,
                 22.0,
                 List.of(),
+                null,
                 100.0,
                 110.0,
                 90.0
@@ -117,6 +120,7 @@ class FeedbackServiceIntegrationTest {
                 72.0,
                 45.0,
                 97.0,
+                null,
                 16.0,
                 0.5,
                 2.0,

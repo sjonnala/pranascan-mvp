@@ -51,12 +51,20 @@ export interface QualityMetrics {
   audio_snr_db: number;
 }
 
+export type ScanType = 'standard' | 'deep_dive';
+
 export type QualityFlag =
   | 'low_lighting'
   | 'borderline_lighting'
   | 'motion_detected'
   | 'face_not_detected'
   | 'partial_occlusion_suspected'
+  | 'poor_thumb_contact'
+  | 'borderline_thumb_contact'
+  | 'low_signal_quality'
+  | 'height_required_for_stiffness_index'
+  | 'insufficient_cycles_for_morphology'
+  | 'morphology_peaks_not_found'
   | 'high_noise'
   | 'borderline_noise'
   | 'accented_vowel_accommodated'
@@ -75,6 +83,7 @@ export interface ScanSession {
   id: string;
   user_id: string;
   status: 'initiated' | 'completed' | 'failed' | 'rejected';
+  scan_type: ScanType;
   device_model: string | null;
   app_version: string | null;
   created_at: string;
@@ -92,6 +101,7 @@ export interface ScanResult {
   hr_bpm: number | null;
   hrv_ms: number | null;
   spo2: number | null;
+  stiffness_index: number | null;
   respiratory_rate: number | null;
   voice_jitter_pct: number | null;
   voice_shimmer_pct: number | null;
@@ -139,6 +149,7 @@ export interface FrameSample {
 // ─── Scan payload sent to backend ────────────────────────────────────────────
 
 export interface ScanResultPayload {
+  scan_type: ScanType;
   hr_bpm?: number;
   hrv_ms?: number;
   respiratory_rate?: number;
@@ -150,6 +161,7 @@ export interface ScanResultPayload {
   face_confidence?: number;
   audio_snr_db?: number;
   flags: QualityFlag[];
+  user_height_cm?: number;
   frame_data?: FrameSample[];
   frame_r_mean?: number;
   frame_g_mean?: number;

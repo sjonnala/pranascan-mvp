@@ -6,9 +6,13 @@
 import {
   aggregateQualityMetrics,
   buildFrameSample,
+  buildFrameSampleFromRgb,
   computeFaceConfidence,
+  computeFaceConfidenceFromRgb,
   computeLightingScore,
+  computeLightingScoreFromRgb,
   computeMotionScore,
+  computeMotionScoreFromRgb,
   computeOverallQualityScore,
   detectOcclusionHint,
   isTransientMotion,
@@ -336,7 +340,7 @@ describe('aggregateQualityMetrics', () => {
 
 describe('no diagnostic language in frameAnalyzer', () => {
   it('function names and return values contain no diagnostic terms', () => {
-    const sample = buildFrameSample('A'.repeat(5_000), 100);
+    const sample = buildFrameSampleFromRgb({ r_mean: 120, g_mean: 110, b_mean: 90 }, 100);
     const keys = Object.keys(sample);
     const forbidden = ['diagnosis', 'diagnostic', 'disease', 'condition', 'disorder'];
     for (const key of keys) {
@@ -344,6 +348,69 @@ describe('no diagnostic language in frameAnalyzer', () => {
         expect(key.toLowerCase()).not.toContain(word);
       }
     }
+  });
+});
+
+// ─── Vision Camera RGB pipeline functions ────────────────────────────────────
+
+describe('computeLightingScoreFromRgb', () => {
+  it('returns 0 for zero-value sample', () => {
+    expect(computeLightingScoreFromRgb({ r_mean: 0, g_mean: 0, b_mean: 0 })).toBe(0.0);
+  });
+
+  it('returns 1 for max-value sample', () => {
+    expect(computeLightingScoreFromRgb({ r_mean: 255, g_mean: 255, b_mean: 255 })).toBeCloseTo(1.0, 2);
+  });
+
+  it('uses perceptual luminance weighting (green channel dominates)', () => {
+    const greenOnly = computeLightingScoreFromRgb({ r_mean: 0, g_mean: 200, b_mean: 0 });
+    const redOnly = computeLightingScoreFromRgb({ r_mean: 200, g_mean: 0, b_mean: 0 });
+    expect(greenOnly).toBeGreaterThan(redOnly);
+  });
+});
+
+describe('computeMotionScoreFromRgb', () => {
+  it('returns 1.0 when previous sample is null (first frame)', () => {
+    expect(computeMotionScoreFromRgb(null, { r_mean: 100, g_mean: 110, b_mean: 90 })).toBe(1.0);
+  });
+
+  it('returns 1.0 for identical consecutive samples', () => {
+    const s = { r_mean: 100, g_mean: 110, b_mean: 90 };
+    expect(computeMotionScoreFromRgb(s, s)).toBe(1.0);
+  });
+
+  it('returns lower score for samples with large RGB delta', () => {
+    const prev = { r_mean: 10, g_mean: 10, b_mean: 10 };
+    const curr = { r_mean: 200, g_mean: 200, b_mean: 200 };
+    expect(computeMotionScoreFromRgb(prev, curr)).toBeLessThan(0.5);
+  });
+});
+
+describe('buildFrameSampleFromRgb', () => {
+  it('preserves all channel means and the timestamp', () => {
+    const s = buildFrameSampleFromRgb({ r_mean: 120, g_mean: 130, b_mean: 90 }, 1234);
+    expect(s).toEqual({ t_ms: 1234, r_mean: 120, g_mean: 130, b_mean: 90 });
+  });
+});
+
+describe('computeFaceConfidenceFromRgb', () => {
+  it('returns value in [0, 1] for any valid combination', () => {
+    const cases: [number, number, number, number, number][] = [
+      [100, 110, 90, 0.7, 0.97],
+      [0, 0, 0, 0.0, 0.0],
+      [255, 255, 255, 1.0, 1.0],
+    ];
+    for (const [r, g, b, l, m] of cases) {
+      const conf = computeFaceConfidenceFromRgb({ r_mean: r, g_mean: g, b_mean: b }, l, m);
+      expect(conf).toBeGreaterThanOrEqual(0.0);
+      expect(conf).toBeLessThanOrEqual(1.0);
+    }
+  });
+
+  it('scores higher for well-lit steady samples than dark noisy ones', () => {
+    const good = computeFaceConfidenceFromRgb({ r_mean: 150, g_mean: 130, b_mean: 110 }, 0.7, 0.97);
+    const bad = computeFaceConfidenceFromRgb({ r_mean: 5, g_mean: 5, b_mean: 5 }, 0.02, 0.3);
+    expect(good).toBeGreaterThan(bad);
   });
 });
 

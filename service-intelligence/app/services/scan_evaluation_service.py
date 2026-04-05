@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from app.schemas.scan import ScanResultSubmit
 from app.services.anemia_screen import screen_anemia
+from app.services.morphology_processor import process_morphology_frames
 from app.services.quality_gate import run_quality_gate
 from app.services.rppg_processor import build_frame_samples, process_frames
 from app.services.skin_tone import apply_skin_tone_calibration
@@ -18,6 +19,7 @@ from app.services.voice_processor import build_audio_samples, process_audio
 class ScanEvaluation:
     submission: ScanResultSubmit
     spo2: float | None
+    stiffness_index: float | None
     flags: list[str]
     warnings: list[str]
     quality_gate_passed: bool
@@ -34,7 +36,7 @@ def evaluate_scan_submission(
     extracted_vitals: ExtractedVitals | None = None,
 ) -> ScanEvaluation:
     """Apply deterministic scan processing without persistence or user-state concerns."""
-    processed_submission, rppg_flags = _apply_server_side_rppg(submission)
+    processed_submission, rppg_flags, stiffness_index = _apply_server_side_rppg(submission)
     processed_submission = _apply_server_side_voice_dsp(processed_submission)
     processed_submission, spo2 = _apply_extracted_vitals(processed_submission, extracted_vitals)
 
@@ -45,41 +47,64 @@ def evaluate_scan_submission(
         processed_submission.hr_bpm,
         processed_submission.hrv_ms,
     )
-    anemia = screen_anemia(
-        r_mean=processed_submission.frame_r_mean,
-        g_mean=processed_submission.frame_g_mean,
-        b_mean=processed_submission.frame_b_mean,
-        lighting_score=processed_submission.lighting_score,
-        motion_score=processed_submission.motion_score,
-    )
+    anemia = None
+    if submission.scan_type == "standard":
+        anemia = screen_anemia(
+            r_mean=processed_submission.frame_r_mean,
+            g_mean=processed_submission.frame_g_mean,
+            b_mean=processed_submission.frame_b_mean,
+            lighting_score=processed_submission.lighting_score,
+            motion_score=processed_submission.motion_score,
+        )
 
     return ScanEvaluation(
         submission=processed_submission,
         spo2=spo2,
+        stiffness_index=stiffness_index,
         flags=combined_flags,
         warnings=gate.warnings,
         quality_gate_passed=gate.passed,
         rejection_reason=gate.rejection_reason,
         vascular_age_estimate=vascular_age.estimate_years,
         vascular_age_confidence=vascular_age.confidence,
-        hb_proxy_score=anemia.hb_proxy_score,
-        anemia_wellness_label=anemia.wellness_label,
-        anemia_confidence=anemia.confidence,
+        hb_proxy_score=anemia.hb_proxy_score if anemia is not None else None,
+        anemia_wellness_label=anemia.wellness_label if anemia is not None else None,
+        anemia_confidence=anemia.confidence if anemia is not None else None,
     )
 
 
-def _apply_server_side_rppg(submission: ScanResultSubmit) -> tuple[ScanResultSubmit, list[str]]:
+def _apply_server_side_rppg(
+    submission: ScanResultSubmit,
+) -> tuple[ScanResultSubmit, list[str], float | None]:
     rppg_flags: list[str] = []
     if not submission.frame_data:
-        return submission, rppg_flags
+        return submission, rppg_flags, None
 
     frames = build_frame_samples([frame.model_dump() for frame in submission.frame_data])
+    if submission.scan_type == "deep_dive":
+        morphology = process_morphology_frames(frames, submission.user_height_cm)
+        rppg_flags = morphology.flags
+        if morphology.hr_bpm is None:
+            return submission, rppg_flags, morphology.stiffness_index
+
+        return (
+            submission.model_copy(
+                update={
+                    "hr_bpm": morphology.hr_bpm,
+                    "hrv_ms": morphology.hrv_ms,
+                    "quality_score": max(submission.quality_score, morphology.quality_score),
+                }
+            ),
+            rppg_flags,
+            morphology.stiffness_index,
+        )
+
     rppg = process_frames(frames)
     rppg, _skin_calibration = apply_skin_tone_calibration(rppg, frames)
     rppg_flags = rppg.flags
 
     if rppg.hr_bpm is None:
-        return submission, rppg_flags
+        return submission, rppg_flags, None
 
     return (
         submission.model_copy(
@@ -91,6 +116,7 @@ def _apply_server_side_rppg(submission: ScanResultSubmit) -> tuple[ScanResultSub
             }
         ),
         rppg_flags,
+        None,
     )
 
 

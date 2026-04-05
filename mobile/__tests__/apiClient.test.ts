@@ -82,12 +82,13 @@ describe('api client auth wiring', () => {
         }
 
         if (url === '/scans/sessions') {
-          const body = data as { device_model?: string; app_version?: string };
+          const body = data as { scan_type?: string; device_model?: string; app_version?: string };
           return {
             data: {
               id: 'session-1',
               user_id: 'core-user-123',
               status: 'initiated',
+              scan_type: body.scan_type ?? 'standard',
               device_model: body.device_model ?? null,
               app_version: body.app_version ?? null,
               created_at: '2026-03-09T00:00:00Z',
@@ -161,6 +162,7 @@ describe('api client auth wiring', () => {
                 id: 'session-1',
                 user_id: 'core-user-123',
                 status: 'completed',
+                scan_type: 'standard',
                 device_model: null,
                 app_version: null,
                 created_at: '2026-03-09T00:00:00Z',
@@ -201,6 +203,28 @@ describe('api client auth wiring', () => {
         const finalConfig = await applyRequestInterceptors({ ...config, url, method: 'put', data });
 
         requestLog.push({ method: 'put', url, data, config: finalConfig });
+
+        if (url === '/scans/sessions/session-1/complete') {
+          return {
+            data: {
+              id: 'result-1',
+              session_id: 'session-1',
+              user_id: 'core-user-123',
+              hr_bpm: 72,
+              hrv_ms: 42,
+              spo2: 97,
+              stiffness_index: null,
+              respiratory_rate: 15,
+              voice_jitter_pct: 0.4,
+              voice_shimmer_pct: 1.8,
+              quality_score: 0.91,
+              flags: [],
+              trend_alert: null,
+              created_at: '2026-03-09T00:00:35Z',
+            },
+          };
+        }
+
         throw new Error(`Unhandled PUT ${url}`);
       }),
     };
@@ -246,7 +270,7 @@ describe('api client auth wiring', () => {
   it('uses the configured core bearer token for scan calls', async () => {
     client.configureCoreAccessToken('core-token-123');
 
-    await client.createScanSession();
+    await client.createScanSession('standard');
     await client.getScanSession('session-1');
 
     const getSessionRequest = requestLog.find(
@@ -257,8 +281,40 @@ describe('api client auth wiring', () => {
     });
   });
 
+  it('sends frame_data to service-core when completing a scan session', async () => {
+    client.configureCoreAccessToken('core-token-123');
+
+    await client.completeScanSession('session-1', {
+      scan_type: 'standard',
+      quality_score: 0.91,
+      flags: [],
+      frame_data: [
+        { t_ms: 0, r_mean: 150, g_mean: 132, b_mean: 112 },
+        { t_ms: 67, r_mean: 149, g_mean: 131, b_mean: 111 },
+      ],
+      frame_r_mean: 149.5,
+      frame_g_mean: 131.5,
+      frame_b_mean: 111.5,
+    });
+
+    const completionRequest = requestLog.find(
+      (entry) => entry.method === 'put' && entry.url === '/scans/sessions/session-1/complete'
+    );
+
+    expect(completionRequest?.config.headers).toMatchObject({
+      Authorization: 'Bearer core-token-123',
+    });
+    expect(completionRequest?.data).toMatchObject({
+      scan_type: 'standard',
+      frame_data: [
+        { t_ms: 0, r_mean: 150, g_mean: 132, b_mean: 112 },
+        { t_ms: 67, r_mean: 149, g_mean: 131, b_mean: 111 },
+      ],
+    });
+  });
+
   it('throws a clear error when a core token is not configured', async () => {
-    await expect(client.createScanSession()).rejects.toThrow(
+    await expect(client.createScanSession('standard')).rejects.toThrow(
       'You are not authenticated. Sign in before using service-core APIs.'
     );
   });

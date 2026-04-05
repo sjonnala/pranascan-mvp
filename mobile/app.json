@@ -23,9 +23,10 @@
     },
     "plugins": [
       [
-        "expo-camera",
+        "react-native-vision-camera",
         {
-          "cameraPermission": "PranaScan uses your camera to measure wellness indicators. No video is stored."
+          "cameraPermissionText": "PranaScan uses your camera to measure wellness indicators. No video is stored.",
+          "enableFrameProcessors": true
         }
       ],
       [

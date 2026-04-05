@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { QualityFlag, QualityGateResult } from '../types';
+import { QualityFlag, QualityGateResult, ScanType } from '../types';
 
 const SKIP_QUALITY_GATE = process.env.EXPO_PUBLIC_SKIP_QUALITY_GATE === 'true';
 
@@ -17,6 +17,12 @@ const FLAG_LABELS: Record<QualityFlag, string> = {
   motion_detected: 'Hold your phone steady',
   face_not_detected: 'Position your face in the frame',
   partial_occlusion_suspected: 'Face is partially occluded',
+  poor_thumb_contact: 'Cover the camera and flash fully with your thumb',
+  borderline_thumb_contact: 'Thumb contact is usable but could be tighter',
+  low_signal_quality: 'Pulse signal quality is weak',
+  height_required_for_stiffness_index: 'Height is required to calculate the Stiffness Index',
+  insufficient_cycles_for_morphology: 'Not enough stable pulse cycles were captured',
+  morphology_peaks_not_found: 'Pulse-wave landmarks were not detected clearly',
   high_noise: 'Find a quieter environment',
   borderline_noise: 'Audio is usable but a bit noisy',
   accented_vowel_accommodated: 'Voice captured with accent accommodation',
@@ -44,12 +50,14 @@ function QualityIndicator({ label, score, threshold }: QualityIndicatorProps) {
 
 interface QualityGateProps {
   quality: QualityGateResult;
+  scanType?: ScanType;
   onRetry?: () => void;
   testID?: string;
 }
 
-export function QualityGate({ quality, onRetry, testID }: QualityGateProps) {
+export function QualityGate({ quality, scanType = 'standard', onRetry, testID }: QualityGateProps) {
   const { passed, flags, metrics, overallScore } = quality;
+  const tertiaryLabel = scanType === 'deep_dive' ? 'Contact' : 'Face';
 
   return (
     <View style={styles.container} testID={testID ?? 'quality-gate'}>
@@ -70,7 +78,7 @@ export function QualityGate({ quality, onRetry, testID }: QualityGateProps) {
 
       <QualityIndicator label="Lighting" score={metrics.lighting_score} threshold={0.4} />
       <QualityIndicator label="Steady" score={metrics.motion_score} threshold={0.95} />
-      <QualityIndicator label="Face" score={metrics.face_confidence} threshold={0.8} />
+      <QualityIndicator label={tertiaryLabel} score={metrics.face_confidence} threshold={0.8} />
 
       {!passed && flags.length > 0 && (
         <View style={styles.flagsContainer} testID="quality-flags">

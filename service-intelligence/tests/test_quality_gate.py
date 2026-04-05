@@ -25,6 +25,7 @@ from app.services.quality_gate import (
 # ---------------------------------------------------------------------------
 
 _BASE = {
+    "scan_type": "standard",
     "hr_bpm": 72.0,
     "hrv_ms": 45.0,
     "respiratory_rate": 16.0,
@@ -216,6 +217,40 @@ def test_warning_and_error_together_rejects():
     assert "borderline_lighting" in result.flags
     assert "motion_detected" in result.flags
     assert result.warnings == ["borderline_lighting"]
+
+
+def test_deep_dive_ignores_face_and_audio_gates():
+    result = run_quality_gate(
+        _make(
+            {
+                "scan_type": "deep_dive",
+                "face_confidence": 0.0,
+                "audio_snr_db": 0.0,
+                "lighting_score": 0.9,
+                "motion_score": 0.99,
+            }
+        )
+    )
+    assert result.passed is False
+    assert "poor_thumb_contact" in result.flags
+    assert "high_noise" not in result.flags
+    assert "face_not_detected" not in result.flags
+
+
+def test_deep_dive_passes_with_good_contact_and_no_audio():
+    result = run_quality_gate(
+        _make(
+            {
+                "scan_type": "deep_dive",
+                "face_confidence": 0.92,
+                "audio_snr_db": 0.0,
+                "lighting_score": 0.92,
+                "motion_score": 0.99,
+            }
+        )
+    )
+    assert result.passed is True
+    assert result.warnings == []
 
 
 # ---------------------------------------------------------------------------

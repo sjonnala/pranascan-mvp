@@ -13,6 +13,7 @@ import {
   ScanResult,
   ScanResultPayload,
   ScanSession,
+  ScanType,
   ScanSessionWithResult,
 } from '../types';
 
@@ -106,12 +107,14 @@ export async function getConsentStatus(): Promise<ConsentStatus> {
 // ─── Scans ────────────────────────────────────────────────────────────────────
 
 export async function createScanSession(
+  scanType: ScanType,
   deviceModel?: string,
   appVersion?: string
 ): Promise<ScanSession> {
   const { data } = await coreHttp.post<ScanSession>(
     '/scans/sessions',
     {
+      scan_type: scanType,
       device_model: deviceModel,
       app_version: appVersion,
     },

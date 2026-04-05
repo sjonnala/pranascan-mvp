@@ -17,6 +17,7 @@ import com.pranapulse.core.scan.application.ScanEvaluationOutcome;
 import com.pranapulse.core.scan.application.ScanEvaluationService;
 import com.pranapulse.core.scan.application.ScanSessionService;
 import com.pranapulse.core.scan.domain.ScanSession;
+import com.pranapulse.core.scan.domain.ScanType;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,7 +59,7 @@ class FeedbackControllerIntegrationTest {
 
         ScanSession session = scanSessionService.createSession(
                 user.getId(),
-                new CreateScanSessionCommand("Pixel 9", "1.2.0")
+                new CreateScanSessionCommand(ScanType.STANDARD, "Pixel 9", "1.2.0")
         );
         scanSessionService.completeSession(user.getId(), session.getId(), sampleCommand());
 
@@ -94,6 +95,7 @@ class FeedbackControllerIntegrationTest {
 
     private static ScanEvaluationCommand sampleCommand() {
         return new ScanEvaluationCommand(
+                ScanType.STANDARD,
                 null,
                 null,
                 null,
@@ -109,6 +111,7 @@ class FeedbackControllerIntegrationTest {
                 0.94,
                 22.0,
                 List.of(),
+                null,
                 100.0,
                 110.0,
                 90.0
@@ -120,6 +123,7 @@ class FeedbackControllerIntegrationTest {
                 72.0,
                 45.0,
                 97.0,
+                null,
                 16.0,
                 0.5,
                 2.0,
