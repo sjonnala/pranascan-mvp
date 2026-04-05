@@ -150,7 +150,7 @@ Replace simulated voice analysis with real `expo-av` recording + amplitude extra
 **Priority:** P2  
 **Depends on:** none  
 **Description:**  
-Update `docs/daily-status.md` with Sprint 2 progress. Update `docs/sprint-1-backlog.md` with actual completion status.
+Update `docs/status/daily-status.md` with Sprint 2 progress. Update `docs/planning/sprint-1-backlog.md` with actual completion status.
 
 **Acceptance Criteria:**
 - `daily-status.md` has a dated Sprint 2 section

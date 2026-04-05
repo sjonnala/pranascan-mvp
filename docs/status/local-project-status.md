@@ -5,13 +5,13 @@ _Local reference analysis based on the current pulled repo state and git history
 ## Scope and Method
 
 - Source of truth: checked-in code under `backend/`, `mobile/`, `agent/`, and migrations/tests.
-- Planning baseline: `docs/prd.md`, `docs/architecture.md`, `docs/sprint-plan.md`, and sprint backlog/tracker docs.
+- Planning baseline: `docs/planning/prd.md`, `docs/architecture/overview.md`, `docs/planning/sprint-plan.md`, and sprint backlog/tracker docs.
 - History baseline: full `git log --reverse --stat`.
 - When docs and code disagree, this file treats the code as the source of truth.
 
 ## Summary
 
-- Estimated completion against `docs/sprint-plan.md`: **about 80%**
+- Estimated completion against `docs/planning/sprint-plan.md`: **about 80%**
 - Strongest completed areas:
   - backend foundation, consent, auth, audit, and security plumbing
   - mobile end-to-end capture flow with on-device rPPG and on-device voice DSP
@@ -23,7 +23,7 @@ _Local reference analysis based on the current pulled repo state and git history
   - WhatsApp delivery and production-grade operational hardening
   - docs drift and repo hygiene issues, including unresolved merge markers in `README.md`
 
-## Milestone Status Against `docs/sprint-plan.md`
+## Milestone Status Against `docs/planning/sprint-plan.md`
 
 | Plan Window | Planned Focus | Local Status | Notes |
 |---|---|---|---|
@@ -102,9 +102,9 @@ _Local reference analysis based on the current pulled repo state and git history
 
 ## Code vs Plan Drift
 
-- `docs/project-status.md` materially underestimates current completion. It still describes ABHA, weekly reports, delivery automation, vascular age, anemia, edge processing, and security hardening as missing or partial when those areas now have code.
-- `docs/daily-status.md` only reflects very early work and no longer represents the repo.
-- `docs/architecture.md` describes the correct edge-first direction, but the actual code is now a hybrid architecture:
+- `docs/status/project-status.md` materially underestimates current completion. It still describes ABHA, weekly reports, delivery automation, vascular age, anemia, edge processing, and security hardening as missing or partial when those areas now have code.
+- `docs/status/daily-status.md` only reflects very early work and no longer represents the repo.
+- `docs/architecture/overview.md` describes the correct edge-first direction, but the actual code is now a hybrid architecture:
   - main mobile flow is edge-first
   - backend still supports fallback processing paths for `frame_data` and `audio_samples`
 - `README.md` currently contains unresolved merge markers, so it is not reliable as an onboarding status source until cleaned.

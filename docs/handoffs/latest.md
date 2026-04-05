@@ -47,7 +47,7 @@
 
 ### Docs artifact
 
-- **`docs/d30-go-no-go-kpi-template.md`**
+- **`docs/planning/d30-go-no-go-kpi-template.md`**
   - captures the current recommendation for rollout
   - maps Week 4 KPIs to actual repo evidence or missing external evidence
   - identifies the precise blockers still preventing a broader rollout
@@ -223,8 +223,8 @@ cd mobile && npm test -- --watchAll=false      → 151 passed, 11 suites
 - The local shell still has `DEBUG=release`, so Python validation is run with `DEBUG=false`.
 - Mobile Jest still prints the existing `act(...)` warning from `ConsentScreen.test.tsx` and now the new beta screen test path, but the suite passes.
 - Local comparison docs remain intentionally untracked:
-  - `docs/local-project-status.md`
-  - `docs/local-daily-status.md`
+  - `docs/status/local-project-status.md`
+  - `docs/status/local-daily-status.md`
   - `docs/design/`
 
 ---

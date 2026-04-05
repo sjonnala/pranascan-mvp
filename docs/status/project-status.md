@@ -2,7 +2,7 @@
 
 _Previous version: March 9, 2026 (45% completion). This version is a full rewrite based on git history `74907f1` as source of truth. Where docs and code conflict, the code prevails._
 
-_Full commit-by-commit history: see [`docs/daily-status-git-review-2026-03-10.md`](./daily-status-git-review-2026-03-10.md)_
+_Full commit-by-commit history: see [`daily-status-git-review-2026-03-10.md`](./daily-status-git-review-2026-03-10.md)_
 
 ---
 
@@ -118,15 +118,15 @@ _Full commit-by-commit history: see [`docs/daily-status-git-review-2026-03-10.md
 | ABHA production credentials not provisioned | 🟡 | Beta can ship with ABHA as optional; production registration is post-MVP critical path |
 | D21 internal pilot not started | 🟡 | No real-world scan data yet; accuracy figures are from synthetic tests only |
 | Beta user recruitment not started | 🔴 | Should have begun by D20 per plan; D27 target is at risk |
-| `architecture.md` quality thresholds stale | 🟢 | D26 changed hard-fail thresholds but architecture.md not yet updated |
+| `architecture/overview.md` quality thresholds stale | 🟢 | D26 changed hard-fail thresholds but the architecture overview is not yet updated |
 
 ---
 
 ## Code/Doc Drift — Explicit Callouts
 
-1. **`architecture.md` quality thresholds** — still shows `lighting_score > 0.4` and `face_confidence > 0.8` as hard limits. After D26, hard-fail thresholds are `0.33` and `0.68` respectively, with warning zones. Architecture doc needs update.
-2. **`architecture.md` service inventory** — diagram shows only consent/scan/audit services. Does not show: `skin_tone`, `vascular_age`, `anemia_screen`, `trend_engine`, `delivery_service`, `vitality_report`, `agent_runner`, `abha_adapter`, `auth_service`. Significant omission.
-3. **`daily-status.md`** — stops at S2-01 (Mar 8). 40+ commits unrecorded. Superseded by `daily-status-git-review-2026-03-10.md`.
+1. **`docs/architecture/overview.md` quality thresholds** — still shows `lighting_score > 0.4` and `face_confidence > 0.8` as hard limits. After D26, hard-fail thresholds are `0.33` and `0.68` respectively, with warning zones. Architecture doc needs update.
+2. **`docs/architecture/overview.md` service inventory** — diagram shows only consent/scan/audit services. Does not show: `skin_tone`, `vascular_age`, `anemia_screen`, `trend_engine`, `delivery_service`, `vitality_report`, `agent_runner`, `abha_adapter`, `auth_service`. Significant omission.
+3. **`docs/status/daily-status.md`** — stops at S2-01 (Mar 8). 40+ commits unrecorded. Superseded by `docs/status/daily-status-git-review-2026-03-10.md`.
 4. **Commit label `s2-06` used twice** — `56e2259` (on-device voice DSP) and `c45bd7e` (ABHA adapter) both carry the `s2-06` label. No code impact; causes confusion in git log only.
 
 ---

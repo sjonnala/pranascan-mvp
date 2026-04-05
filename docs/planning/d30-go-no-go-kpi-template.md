@@ -40,13 +40,13 @@ This review does **not** claim completion for:
 
 | Area | Target | Evidence Source | Current State |
 |---|---|---|---|
-| Consent + privacy | Explicit opt-in, revocation, deletion path, audit trail | [backend/app/routers/consent.py](../backend/app/routers/consent.py), [backend/app/routers/audit.py](../backend/app/routers/audit.py) | Met in code |
-| Auth enforcement | Protected backend routes and mobile bearer-token flow | [backend/app/routers/auth.py](../backend/app/routers/auth.py), [mobile/src/api/client.ts](../mobile/src/api/client.ts) | Met in code |
-| Camera + voice capture | Real mobile capture path | [mobile/src/screens/ScanScreen.tsx](../mobile/src/screens/ScanScreen.tsx), [mobile/src/components/VoiceCapture.tsx](../mobile/src/components/VoiceCapture.tsx) | Met in code |
-| Trend engine | 3-scan baseline + 15% deviation rule | [backend/app/services/trend_engine.py](../backend/app/services/trend_engine.py) | Met in code |
-| Alert/report delivery | Telegram + WhatsApp scaffolds | [backend/app/services/delivery_service.py](../backend/app/services/delivery_service.py) | Partial; credentials still external |
-| Closed beta gate | Invite-based onboarding before consent | [backend/app/routers/beta.py](../backend/app/routers/beta.py), [mobile/src/screens/BetaOnboardingScreen.tsx](../mobile/src/screens/BetaOnboardingScreen.tsx) | Met in code |
-| Feedback loop | Post-scan usefulness + NPS | [backend/app/routers/feedback.py](../backend/app/routers/feedback.py), [mobile/src/screens/ResultsScreen.tsx](../mobile/src/screens/ResultsScreen.tsx) | Met in code |
+| Consent + privacy | Explicit opt-in, revocation, deletion path, audit trail | [backend/app/routers/consent.py](../../backend/app/routers/consent.py), [backend/app/routers/audit.py](../../backend/app/routers/audit.py) | Met in code |
+| Auth enforcement | Protected backend routes and mobile bearer-token flow | [backend/app/routers/auth.py](../../backend/app/routers/auth.py), [mobile/src/api/client.ts](../../mobile/src/api/client.ts) | Met in code |
+| Camera + voice capture | Real mobile capture path | [mobile/src/screens/ScanScreen.tsx](../../mobile/src/screens/ScanScreen.tsx), [mobile/src/components/VoiceCapture.tsx](../../mobile/src/components/VoiceCapture.tsx) | Met in code |
+| Trend engine | 3-scan baseline + 15% deviation rule | [backend/app/services/trend_engine.py](../../backend/app/services/trend_engine.py) | Met in code |
+| Alert/report delivery | Telegram + WhatsApp scaffolds | [backend/app/services/delivery_service.py](../../backend/app/services/delivery_service.py) | Partial; credentials still external |
+| Closed beta gate | Invite-based onboarding before consent | [backend/app/routers/beta.py](../../backend/app/routers/beta.py), [mobile/src/screens/BetaOnboardingScreen.tsx](../../mobile/src/screens/BetaOnboardingScreen.tsx) | Met in code |
+| Feedback loop | Post-scan usefulness + NPS | [backend/app/routers/feedback.py](../../backend/app/routers/feedback.py), [mobile/src/screens/ResultsScreen.tsx](../../mobile/src/screens/ResultsScreen.tsx) | Met in code |
 | Accuracy validation | Bench evidence for HR/HRV | No checked-in benchmark dataset/results | Not met |
 | Skin-tone audit | Fitzpatrick 5-6 empirical evidence | No checked-in audit results | Not met |
 

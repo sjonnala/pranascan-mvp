@@ -28,7 +28,7 @@
 
 ### Recommended Local Setup
 
-Use Podman Desktop for PostgreSQL and run backend/mobile directly on your machine. See [docs/local-podman-postgres-setup.md](docs/local-podman-postgres-setup.md) for the full flow.
+Use Podman Desktop for PostgreSQL and run backend/mobile directly on your machine. See [docs/setup/local-podman-postgres-setup.md](docs/setup/local-podman-postgres-setup.md) for the full flow.
 
 ### PostgreSQL via Podman
 
@@ -84,11 +84,12 @@ For a physical phone, set `EXPO_PUBLIC_API_URL` in `mobile/.env` to your machine
 
 ## Implementation Notes
 
-- [docs/architecture.md](docs/architecture.md) — system architecture and execution model
-- [docs/sprint-plan.md](docs/sprint-plan.md) — original MVP plan and milestone breakdown
-- [docs/sprint-2-tracker.md](docs/sprint-2-tracker.md) — current tracker for delivered Sprint 2 and follow-on milestones
+- [docs/README.md](docs/README.md) — documentation index by purpose
+- [docs/architecture/overview.md](docs/architecture/overview.md) — system architecture and execution model
+- [docs/planning/sprint-plan.md](docs/planning/sprint-plan.md) — original MVP plan and milestone breakdown
+- [docs/planning/sprint-2-tracker.md](docs/planning/sprint-2-tracker.md) — current tracker for delivered Sprint 2 and follow-on milestones
 - [docs/handoffs/latest.md](docs/handoffs/latest.md) — latest engineering handoff and recommended next slice
 
 ## Current Status
 
-See [docs/project-status.md](docs/project-status.md) for the current completion assessment against the MVP plan.
+See [docs/status/project-status.md](docs/status/project-status.md) for the current completion assessment against the MVP plan.

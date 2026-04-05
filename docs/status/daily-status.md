@@ -37,7 +37,7 @@
 
 ## Sprint 2.1 — March 8, 2026 (UTC)
 
-Source of truth: docs/sprint-2.1-backlog.md
+Source of truth: docs/planning/sprint-2.1-backlog.md
 
 ### S2-01 · Real Camera Capture Pipeline ✅
 

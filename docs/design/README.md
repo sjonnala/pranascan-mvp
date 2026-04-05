@@ -63,11 +63,11 @@ The current implementation is best described as a hybrid system:
 
 ## Related Docs
 
-- [../architecture.md](../architecture.md)
+- [../architecture/overview.md](../architecture/overview.md)
   Original architecture direction and privacy model.
 
-- [../project-status.md](../project-status.md)
+- [../status/project-status.md](../status/project-status.md)
   Progress assessment versus the sprint plan.
 
-- [../sprint-plan.md](../sprint-plan.md)
+- [../planning/sprint-plan.md](../planning/sprint-plan.md)
   Original execution plan and staged rollout targets.

@@ -13,11 +13,11 @@ _Local reference history built from the current repo and `git log --reverse --st
 - The repo shows **accelerated delivery** relative to the original 30-day sprint plan.
 - Most of Weeks 1-3 are now implemented in code.
 - The main open areas are **Week 4 validation and launch work**, plus cleanup around stale docs and the latest D26 WIP changes.
-- Existing `docs/daily-status.md` and `docs/project-status.md` no longer cover the full implementation history.
+- Existing `docs/status/daily-status.md` and `docs/status/project-status.md` no longer cover the full implementation history.
 
 ## Current Completion Estimate
 
-- Local estimate against `docs/sprint-plan.md`: **about 80% complete**
+- Local estimate against `docs/planning/sprint-plan.md`: **about 80% complete**
 - Best-supported completed areas:
   - scanning core and privacy/compliance plumbing
   - on-device mobile signal processing
@@ -67,7 +67,7 @@ _Local reference history built from the current repo and `git log --reverse --st
 | `0794e79` | PranaScan Dev | Hardened backend rPPG processor for temporal validation, upsampling, and spectral quality. | D3, D9, D10 | **Feature maturity** | Increased robustness of server-side fallback path. |
 | `04955d8` | PranaScan Dev | Added integration tests proving `frame_data` drives backend rPPG end to end. | D3 verification | **Validation complete** | Good proof that fallback processing path worked. |
 | `73a1ffb` | PranaScan Dev | Removed simulated voice results until real voice capture was ready. | D7 integrity fix | **Risk reduction** | Avoided fake metrics in results. |
-| `5f55465` | satjonna | Added `docs/prd.md`, `docs/sprint-plan.md`, and `docs/SKILL.md`; minor README updates. | Planning baseline | **Docs only** | Important because it introduced the plan used for later comparison. |
+| `5f55465` | satjonna | Added `docs/planning/prd.md`, `docs/planning/sprint-plan.md`, and `docs/meta/SKILL.md`; minor README updates. | Planning baseline | **Docs only** | Important because it introduced the plan used for later comparison. |
 | `efd449b` | PranaScan Dev | Updated README progress text. | Status docs | **Docs only** | README later became stale and now contains merge conflict markers. |
 | `5345634` | PranaScan Dev | Replaced fixed face-confidence proxy with JPEG heuristic + fallback; added tests. | D2 environment checks | **Feature complete for MVP heuristic** | Not a native face detector, but better than fixed proxy. |
 | `9744993` | PranaScan Dev | Added handoff note documenting repo state and pending work. | Team handoff | **Docs only** | Helpful for session continuity. |
@@ -97,9 +97,9 @@ _Local reference history built from the current repo and `git log --reverse --st
 
 ## Code vs Existing Status Docs
 
-- `docs/project-status.md` reflects an earlier repository state and now understates actual progress.
-- `docs/daily-status.md` stops at early Sprint 1 / Sprint 2.1 activity and omits most of the feature history.
-- `docs/sprint-2-tracker.md` is closer to current reality, but it is also stale after the D26 WIP changes and still contains some optimistic statements that are stronger than the code evidence.
+- `docs/status/project-status.md` reflects an earlier repository state and now understates actual progress.
+- `docs/status/daily-status.md` stops at early Sprint 1 / Sprint 2.1 activity and omits most of the feature history.
+- `docs/planning/sprint-2-tracker.md` is closer to current reality, but it is also stale after the D26 WIP changes and still contains some optimistic statements that are stronger than the code evidence.
 - `README.md` currently contains unresolved merge markers and should not be used as the primary onboarding source until cleaned.
 
 ## Remaining Gaps
@@ -120,7 +120,7 @@ _Local reference history built from the current repo and `git log --reverse --st
 
 ## Recommended Next Local Review Tasks
 
-1. Reconcile `docs/project-status.md`, `docs/daily-status.md`, and `docs/sprint-2-tracker.md` with the current code.
+1. Reconcile `docs/status/project-status.md`, `docs/status/daily-status.md`, and `docs/planning/sprint-2-tracker.md` with the current code.
 2. Clean up `README.md` merge markers before using it as an onboarding entry point.
 3. Finish D26 tests and update the tracker once those changes are validated.
 4. Separate code-complete items from evidence-complete items in status reporting.

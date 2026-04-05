@@ -20,7 +20,7 @@ Read these in order:
 3. `docs/design/backend-design.md`
 4. `docs/design/mobile-design.md`
 5. `docs/design/data-contracts.md`
-6. `docs/project-status.md`
+6. `docs/status/project-status.md`
 
 ## Local Prerequisites
 
@@ -252,7 +252,7 @@ Trust, in this order:
 1. current code
 2. tests that still match current code
 3. `docs/design/*`
-4. `docs/project-status.md`
+4. `docs/status/project-status.md`
 5. older planning docs and handoff notes
 
 ## Definition Of A Safe Change In This Repo
