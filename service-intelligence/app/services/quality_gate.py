@@ -41,14 +41,14 @@ from app.schemas.scan import ScanResultSubmit
 # ---------------------------------------------------------------------------
 
 # Width of the warning zone below each hard threshold
-_LIGHTING_WARNING_DELTA = 0.07     # (threshold - 0.07, threshold] = warning
-_FACE_WARNING_DELTA = 0.12         # (threshold - 0.12, threshold] = warning
-_AUDIO_WARNING_DELTA = 5.0         # (threshold - 5.0,  threshold] = warning
+_LIGHTING_WARNING_DELTA = 0.07  # (threshold - 0.07, threshold] = warning
+_FACE_WARNING_DELTA = 0.12  # (threshold - 0.12, threshold] = warning
+_AUDIO_WARNING_DELTA = 5.0  # (threshold - 5.0,  threshold] = warning
 
 
 class QualityFlagSeverity(str, Enum):
-    WARNING = "warning"   # borderline — scan proceeds, flag attached
-    ERROR = "error"       # hard failure — scan rejected
+    WARNING = "warning"  # borderline — scan proceeds, flag attached
+    ERROR = "error"  # hard failure — scan rejected
 
 
 # ---------------------------------------------------------------------------
@@ -59,9 +59,9 @@ class QualityFlagSeverity(str, Enum):
 @dataclass
 class QualityGateResult:
     passed: bool
-    flags: list[str]                             # all flags (warning + error)
-    warnings: list[str] = field(default_factory=list)   # warning-only flags
-    rejection_reason: str | None = None          # set on ERROR-level failures
+    flags: list[str]  # all flags (warning + error)
+    warnings: list[str] = field(default_factory=list)  # warning-only flags
+    rejection_reason: str | None = None  # set on ERROR-level failures
 
 
 # ---------------------------------------------------------------------------

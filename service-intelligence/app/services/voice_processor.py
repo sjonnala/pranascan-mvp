@@ -36,7 +36,7 @@ from scipy import signal
 SAMPLE_RATE = 4410  # Hz (downsampled from 44100)
 MIN_SAMPLES = SAMPLE_RATE * 2  # at least 2 seconds
 SILENCE_THRESHOLD = 0.01  # amplitude below this is silence
-F0_LOW_HZ = 80.0   # minimum F0 — lowest typical voice fundamental
+F0_LOW_HZ = 80.0  # minimum F0 — lowest typical voice fundamental
 F0_HIGH_HZ = 450.0  # maximum F0 — highest typical voice (extended for higher-pitched Indian voices)
 MIN_VOICED_FRACTION = 0.5  # >50% of recording must be voiced (standard path)
 # D26: Accented vowel accommodation

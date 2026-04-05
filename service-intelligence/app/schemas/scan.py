@@ -21,6 +21,7 @@ class ScanResultSubmit(BaseModel):
     optional media bytes for server-side fallback processing.
     These are wellness indicators, not diagnostic values.
     """
+
     frame_data: list[FrameSampleSchema] | None = Field(
         default=None,
         description="Per-frame RGB means for server-side rPPG. Overrides client-computed values.",

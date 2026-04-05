@@ -87,7 +87,9 @@ def _build_synthetic_frame_samples(
 
     green = base_green + (amplitude * pulse) + (0.35 * amplitude * harmonic) + texture + noise
     red = base_red + (0.45 * amplitude * pulse) + (0.25 * texture)
-    blue = base_blue + (0.20 * amplitude * np.sin((2.0 * math.pi * heart_rate_hz * timeline) - phase))
+    blue = base_blue + (
+        0.20 * amplitude * np.sin((2.0 * math.pi * heart_rate_hz * timeline) - phase)
+    )
     blue = blue - (0.20 * texture)
 
     return [

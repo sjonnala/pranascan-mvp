@@ -62,6 +62,7 @@ class FitzpatrickType(IntEnum):
     Fitzpatrick phototype scale.
     Types 3–6 are the primary target for the Indian Fitzpatrick scale.
     """
+
     TYPE_1 = 1  # Very fair — always burns, never tans
     TYPE_2 = 2  # Fair — usually burns, sometimes tans
     TYPE_3 = 3  # Medium — sometimes burns, always tans (Indian: lighter)
@@ -108,10 +109,10 @@ _LOW_ACCURACY_TYPES = {FitzpatrickType.TYPE_5, FitzpatrickType.TYPE_6}
 @dataclass
 class SkinToneCalibrationResult:
     fitzpatrick_type: FitzpatrickType
-    ita_angle: float            # degrees
-    confidence: float           # 0.0–1.0 (calibration reliability for this type)
+    ita_angle: float  # degrees
+    confidence: float  # 0.0–1.0 (calibration reliability for this type)
     calibration_applied: bool
-    accuracy_note: str | None   # present when reduced accuracy expected
+    accuracy_note: str | None  # present when reduced accuracy expected
     flags_added: list[str] = field(default_factory=list)
 
 
@@ -260,20 +261,14 @@ def apply_skin_tone_calibration(
 
     # Apply HR/HRV correction factor
     calibrated_hr = (
-        round(result.hr_bpm * cal["hr_factor"], 1)
-        if result.hr_bpm is not None
-        else None
+        round(result.hr_bpm * cal["hr_factor"], 1) if result.hr_bpm is not None else None
     )
     calibrated_hrv = (
-        round(result.hrv_ms * cal["hr_factor"], 2)
-        if result.hrv_ms is not None
-        else None
+        round(result.hrv_ms * cal["hr_factor"], 2) if result.hrv_ms is not None else None
     )
 
     # Adjust quality score (clamp to [0, 1])
-    calibrated_quality = round(
-        max(0.0, min(1.0, result.quality_score + cal["quality_weight"])), 4
-    )
+    calibrated_quality = round(max(0.0, min(1.0, result.quality_score + cal["quality_weight"])), 4)
 
     calibrated_result = RppgResult(
         hr_bpm=calibrated_hr,

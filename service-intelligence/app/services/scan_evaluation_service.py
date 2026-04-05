@@ -121,7 +121,9 @@ def _apply_extracted_vitals(
 
     updated_submission = submission.model_copy(
         update={
-            "hr_bpm": submission.hr_bpm if submission.hr_bpm is not None else extracted_vitals.heart_rate,
+            "hr_bpm": (
+                submission.hr_bpm if submission.hr_bpm is not None else extracted_vitals.heart_rate
+            ),
             "hrv_ms": submission.hrv_ms if submission.hrv_ms is not None else extracted_vitals.hrv,
         }
     )
