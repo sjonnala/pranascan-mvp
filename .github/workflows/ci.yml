@@ -58,7 +58,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: python -m pytest tests/ -v --tb=short --cov=app --cov-report=xml
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v6
         if: always()
         with:
           files: service-intelligence/coverage.xml
