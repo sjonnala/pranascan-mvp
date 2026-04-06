@@ -15,9 +15,77 @@ The target shape is:
 - required audience for `service-core`: `pranapulse-core`
 - mobile redirect URI: `pranascan://auth/callback`
 
-## Prerequisites
+## Quick Start (Automated — Recommended)
 
-- Podman or Docker installed
+The realm, client, PKCE settings, audience mapper, and test user are all
+pre-configured in [`keycloak/pranapulse-realm.json`](/Users/satishjonnala/Documents/Data Team - AIML/github-repos/pranascan-mvp/keycloak/pranapulse-realm.json)
+and auto-imported when `docker-compose.yml` starts Keycloak.
+
+### Using Podman Desktop
+
+```bash
+podman compose up -d
+```
+
+### Using Docker
+
+```bash
+docker compose up -d
+```
+
+This starts **all four services** in one command:
+
+| Service               | Port  | Description                        |
+| --------------------- | ----- | ---------------------------------- |
+| `db`                  | 5433  | Postgres 16                        |
+| `keycloak`            | 8081  | Keycloak 26.1 with realm imported  |
+| `service-intelligence`| 8000  | Python intelligence service        |
+| `service-core`        | 8080  | Spring Boot core service           |
+
+`service-core` waits for both `db` and `keycloak` to be healthy before starting.
+
+### Pre-configured test user
+
+| Field    | Value                      |
+| -------- | -------------------------- |
+| username | `testuser`                 |
+| email    | `testuser@pranapulse.dev`  |
+| password | `testpassword`             |
+
+### Verify the setup
+
+```bash
+# Keycloak OIDC discovery
+curl http://localhost:8081/realms/pranapulse/.well-known/openid-configuration
+
+# JWK set
+curl http://localhost:8081/realms/pranapulse/protocol/openid-connect/certs
+```
+
+Then configure the mobile app (see [section 7](#7-configure-the-mobile-app) below)
+and sign in with the test user.
+
+### Customising the realm
+
+Edit `keycloak/pranapulse-realm.json` and restart:
+
+```bash
+podman compose down keycloak
+podman compose up -d keycloak
+```
+
+Keycloak re-imports the realm on every `start-dev --import-realm` startup.
+
+---
+
+## Manual Setup (Reference)
+
+The sections below document each manual step if you prefer to run Keycloak
+standalone or need to understand what the realm import automates.
+
+### Prerequisites
+
+- Podman Desktop or Docker installed
 - `service-core` running locally or via compose
 - Expo mobile app running in a simulator, emulator, or dev build
 
@@ -262,6 +330,3 @@ Check:
 - the client redirect URI in Keycloak exactly matches `pranascan://auth/callback`
 - you are using a native runtime that supports the redirect cleanly
 
-## Next Improvement
-
-If you want this to be one command instead of manual console setup, the next step is to add Keycloak plus a realm import file to [docker-compose.yml](/Users/satishjonnala/Documents/Data Team - AIML/github-repos/pranascan-mvp/docker-compose.yml).

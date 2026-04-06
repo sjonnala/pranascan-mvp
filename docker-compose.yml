@@ -16,6 +16,24 @@ services:
       timeout: 5s
       retries: 5
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./keycloak/pranapulse-realm.json:/opt/keycloak/data/import/pranapulse-realm.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo HEALTHY"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
   service-intelligence:
     build:
       context: ./service-intelligence
@@ -46,14 +64,16 @@ services:
       APP_INTELLIGENCE_INTERNAL_TOKEN: ${APP_INTELLIGENCE_INTERNAL_TOKEN:-dev-internal-service-token}
       APP_INTELLIGENCE_GRPC_HOST: service-intelligence
       APP_INTELLIGENCE_GRPC_PORT: 50051
-      APP_SECURITY_ISSUER_URI: ${APP_SECURITY_ISSUER_URI:-http://host.containers.internal:8081/realms/pranapulse}
-      APP_SECURITY_JWK_SET_URI: ${APP_SECURITY_JWK_SET_URI:-http://host.containers.internal:8081/realms/pranapulse/protocol/openid-connect/certs}
+      APP_SECURITY_ISSUER_URI: ${APP_SECURITY_ISSUER_URI:-http://keycloak:8080/realms/pranapulse}
+      APP_SECURITY_JWK_SET_URI: ${APP_SECURITY_JWK_SET_URI:-http://keycloak:8080/realms/pranapulse/protocol/openid-connect/certs}
       APP_SECURITY_REQUIRED_AUDIENCE: ${APP_SECURITY_REQUIRED_AUDIENCE:-pranapulse-core}
     ports:
       - "8080:8080"
       - "9090:9090"
     depends_on:
       db:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
 
 volumes:
