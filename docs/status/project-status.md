@@ -65,9 +65,9 @@ _Full commit-by-commit history: see [`daily-status-git-review-2026-03-10.md`](./
 
 ### Mobile (React Native / Expo SDK 51)
 - Consent screen + `useConsent` hook — full grant/revoke flow
-- Camera capture: real `expo-camera` `CameraView`, JPEG-heuristic quality metrics (lighting, motion, face confidence)
-- Frame analysis (`frameAnalyzer.ts`): `computeLightingScore`, `computeMotionScore`, `computeFaceConfidence`, `buildFrameSample`; D26: `detectOcclusionHint` (glasses/beard from JPEG size/luminance mismatch), `isTransientMotion` (edge-motion recovery detection)
-- On-device rPPG (`rppgProcessor.ts`): peak-detection HR, Welch PSD HRV, RR; 322-test suite
+- Camera capture: `react-native-vision-camera` with centre-ROI RGB extraction, 30/60 FPS scan modes, and RGB-based quality metrics
+- Frame analysis (`frameAnalyzer.ts`): `computeLightingScoreFromRgb`, `computeMotionScoreFromRgb`, `computeFaceConfidenceFromRgb`, `buildFrameSampleFromRgb`, `aggregateQualityMetrics`, `isTransientMotion`
+- Camera-derived HR / HRV / respiratory metrics currently come from server-side processing of submitted `frame_data`; `rppgProcessor.ts` remains in the repo as a utility path rather than the active submission path
 - On-device voice DSP (`voiceProcessor.ts`): jitter, shimmer, SNR; `voiceAnalyzer.ts` for `expo-av` sample extraction
 - Scan orchestration: `ScanScreen`, `useScan` hook, `ResultsScreen` with full metric display
 - API client: bearer token injection, refresh, all protected endpoints wired
@@ -81,7 +81,7 @@ _Full commit-by-commit history: see [`daily-status-git-review-2026-03-10.md`](./
 |---|---|---|
 | Telegram delivery | Fully wired in `delivery_service.py` | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` not provisioned in env — delivery is a no-op until set |
 | ABHA production | Sandbox mock fully functional | ABDM production credentials + HIU/HIP registration not submitted |
-| Face confidence | JPEG heuristic implemented | Sprint 3: replace with `expo-face-detector` (ML Kit) for pixel-accurate detection |
+| Face confidence | RGB-balance heuristic implemented | Sprint 3: replace with a native detector for stronger face / ROI validation |
 | Skin tone calibration | ITA method + per-type correction working | Sprint 3: replace with full Diverse-rPPG 2026 multi-channel (POS/CHROM) model using licensed dataset |
 
 ---
@@ -113,7 +113,7 @@ _Full commit-by-commit history: see [`daily-status-git-review-2026-03-10.md`](./
 | Risk | Severity | Mitigation |
 |---|---|---|
 | Skin tone calibration (Types 5–6) is MVP linear approximation | 🟡 | Accuracy note flag in place; full model is Sprint 3 target |
-| Face confidence is JPEG heuristic (not ML) | 🟡 | `expo-face-detector` planned for Sprint 3; current ±15% variance is acceptable for quality gate |
+| Face confidence is RGB heuristic (not ML) | 🟡 | Native face / ROI validation is still a future improvement; current heuristic is only a soft quality gate |
 | Telegram delivery inactive (no env vars) | 🟡 | Provision `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` before beta |
 | ABHA production credentials not provisioned | 🟡 | Beta can ship with ABHA as optional; production registration is post-MVP critical path |
 | D21 internal pilot not started | 🟡 | No real-world scan data yet; accuracy figures are from synthetic tests only |

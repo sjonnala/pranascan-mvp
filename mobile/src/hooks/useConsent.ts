@@ -17,7 +17,7 @@ export interface UseConsentReturn {
   hasActiveConsent: boolean;
 }
 
-export function useConsent(): UseConsentReturn {
+export function useConsent(enabled = true): UseConsentReturn {
   const [consentStatus, setConsentStatus] = useState<ConsentStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +39,14 @@ export function useConsent(): UseConsentReturn {
   }, []);
 
   useEffect(() => {
+    if (!enabled) {
+      setConsentStatus(null);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
     (async () => {
       try {
         await refreshConsentStatus();
@@ -48,9 +56,13 @@ export function useConsent(): UseConsentReturn {
         setIsLoading(false);
       }
     })();
-  }, [refreshConsentStatus]);
+  }, [enabled, refreshConsentStatus]);
 
   const grantUserConsent = useCallback(async () => {
+    if (!enabled) {
+      throw new Error('Cannot grant consent before the user is authenticated.');
+    }
+
     setIsLoading(true);
     setError(null);
     try {
@@ -62,7 +74,7 @@ export function useConsent(): UseConsentReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [refreshConsentStatus]);
+  }, [enabled, refreshConsentStatus]);
 
   return {
     consentStatus,

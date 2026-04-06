@@ -1,5 +1,8 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { PranaPulseReveal } from '../components/pranapulse/PranaPulseReveal';
+import { PranaPulseScaffold } from '../components/pranapulse/PranaPulseScaffold';
+import { pranaPulseShadow, pranaPulseTheme, withAlpha } from '../theme/pranaPulse';
 
 interface AuthScreenProps {
   onSignIn: () => Promise<void>;
@@ -15,128 +18,142 @@ export function AuthScreen({
   error,
 }: AuthScreenProps) {
   return (
-    <View style={styles.container} testID="auth-screen">
-      <View style={styles.hero}>
-        <Text style={styles.eyebrow}>PranaPulse Core</Text>
-        <Text style={styles.title}>Sign in to continue</Text>
-        <Text style={styles.subtitle}>
-          Your mobile session now uses the same OIDC identity as `service-core`, so consent, scan
-          history, and feedback all stay attached to your real account.
-        </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Before you start</Text>
-        <Text style={styles.cardText}>
-          Use the identity provider configured for your local `service-core` environment. On a
-          physical device, the issuer URL must be reachable from your phone.
-        </Text>
-
-        {error ? (
-          <View style={styles.errorBox} testID="auth-error">
-            <Text style={styles.errorText}>{error}</Text>
+    <PranaPulseScaffold activeTab="home" scroll={false} showBottomNav={false}>
+      <View style={styles.content} testID="auth-screen">
+        <PranaPulseReveal delay={20}>
+          <View style={styles.hero}>
+            <Text style={styles.eyebrow}>PranaPulse Core</Text>
+            <Text style={styles.title}>Sign in to continue</Text>
+            <Text style={styles.subtitle}>
+              Your OIDC session keeps consent, scan history, and feedback attached to the same PranaPulse account.
+            </Text>
           </View>
-        ) : null}
+        </PranaPulseReveal>
 
-        <TouchableOpacity
-          style={[styles.signInButton, (!isReady || isAuthenticating) && styles.signInButtonDisabled]}
-          onPress={() => {
-            void onSignIn();
-          }}
-          disabled={!isReady || isAuthenticating}
-          testID="auth-sign-in-button"
-        >
-          {isAuthenticating ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.signInButtonText}>Sign In With OIDC</Text>
-          )}
-        </TouchableOpacity>
+        <PranaPulseReveal delay={110}>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Before you start</Text>
+            <Text style={styles.cardText}>
+              Use the identity provider configured for your local `service-core` environment. On a physical device, the issuer URL must be reachable from your phone.
+            </Text>
 
-        <Text style={styles.helperText}>
-          If this button never enables, check `EXPO_PUBLIC_OIDC_ISSUER` and `EXPO_PUBLIC_OIDC_CLIENT_ID`.
-        </Text>
+            {error ? (
+              <View style={styles.errorBox} testID="auth-error">
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.signInButton, (!isReady || isAuthenticating) && styles.signInButtonDisabled]}
+              onPress={() => {
+                void onSignIn();
+              }}
+              disabled={!isReady || isAuthenticating}
+              testID="auth-sign-in-button"
+            >
+              {isAuthenticating ? (
+                <ActivityIndicator color={pranaPulseTheme.colors.onPrimary} />
+              ) : (
+                <Text style={styles.signInButtonText}>Sign In With OIDC</Text>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.helperPanel}>
+              <Text style={styles.helperLabel}>Setup note</Text>
+              <Text style={styles.helperText}>
+                If this button never enables, check `EXPO_PUBLIC_OIDC_ISSUER` and `EXPO_PUBLIC_OIDC_CLIENT_ID`.
+              </Text>
+            </View>
+          </View>
+        </PranaPulseReveal>
       </View>
-    </View>
+    </PranaPulseScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  content: {
     flex: 1,
-    backgroundColor: '#0f0f1a',
-    paddingHorizontal: 24,
-    paddingVertical: 48,
     justifyContent: 'center',
+    gap: 22,
+    paddingBottom: 24,
   },
   hero: {
-    marginBottom: 28,
+    gap: 8,
   },
   eyebrow: {
-    color: '#7dd3fc',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    marginBottom: 12,
+    ...pranaPulseTheme.type.eyebrow,
+    color: pranaPulseTheme.colors.primary,
   },
   title: {
-    color: '#ffffff',
+    fontFamily: pranaPulseTheme.fonts.extraBold,
+    color: pranaPulseTheme.colors.onSurface,
     fontSize: 34,
-    fontWeight: '700',
-    marginBottom: 12,
+    letterSpacing: -0.8,
   },
   subtitle: {
-    color: '#b8b8d8',
-    fontSize: 16,
-    lineHeight: 24,
+    ...pranaPulseTheme.type.body,
+    maxWidth: 330,
   },
   card: {
-    backgroundColor: '#17172a',
-    borderRadius: 18,
-    padding: 20,
+    borderRadius: pranaPulseTheme.radius.lg,
+    padding: 24,
+    backgroundColor: pranaPulseTheme.colors.surfaceContainerLowest,
+    gap: 16,
+    ...pranaPulseShadow,
   },
   cardTitle: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 10,
+    fontFamily: pranaPulseTheme.fonts.extraBold,
+    color: pranaPulseTheme.colors.onSurface,
+    fontSize: 22,
   },
   cardText: {
-    color: '#b8b8d8',
+    fontFamily: pranaPulseTheme.fonts.medium,
+    color: pranaPulseTheme.colors.onSurfaceVariant,
     fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 20,
-  },
-  signInButton: {
-    backgroundColor: '#2563eb',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  signInButtonDisabled: {
-    opacity: 0.5,
-  },
-  signInButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  helperText: {
-    color: '#7d7d99',
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 14,
+    lineHeight: 23,
   },
   errorBox: {
-    backgroundColor: '#2f1620',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
+    borderRadius: pranaPulseTheme.radius.md,
+    padding: 14,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.secondaryContainer, 0.74),
   },
   errorText: {
-    color: '#fda4af',
+    color: pranaPulseTheme.colors.secondary,
     fontSize: 14,
+    lineHeight: 20,
+  },
+  signInButton: {
+    borderRadius: pranaPulseTheme.radius.full,
+    paddingVertical: 17,
+    alignItems: 'center',
+    backgroundColor: pranaPulseTheme.colors.primary,
+  },
+  signInButtonDisabled: {
+    opacity: 0.45,
+  },
+  signInButtonText: {
+    fontFamily: pranaPulseTheme.fonts.extraBold,
+    color: pranaPulseTheme.colors.onPrimary,
+    fontSize: 16,
+  },
+  helperPanel: {
+    borderRadius: pranaPulseTheme.radius.md,
+    padding: 16,
+    backgroundColor: pranaPulseTheme.colors.surfaceContainerLow,
+    gap: 6,
+  },
+  helperLabel: {
+    fontFamily: pranaPulseTheme.fonts.bold,
+    color: pranaPulseTheme.colors.onSurface,
+    fontSize: 13,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  helperText: {
+    fontFamily: pranaPulseTheme.fonts.medium,
+    color: pranaPulseTheme.colors.onSurfaceVariant,
+    fontSize: 13,
     lineHeight: 20,
   },
 });

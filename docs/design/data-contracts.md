@@ -4,6 +4,8 @@
 
 Public product routes are mounted under `service-core` at `/api/v1`.
 Internal compute routes are exposed from `service-intelligence` over gRPC.
+The planned Circle/Vitality Glow feed routes are defined in
+[vitality-glow-feed-contract.md](./vitality-glow-feed-contract.md).
 
 ## Core Authentication Endpoint
 
@@ -27,7 +29,22 @@ Internal compute routes are exposed from `service-intelligence` over gRPC.
 | POST | `/scans/sessions` | Yes | Create a new scan session |
 | PUT | `/scans/sessions/{id}/complete` | Yes | Submit scan metrics and complete the session |
 | GET | `/scans/sessions/{id}` | Yes | Fetch a session and its result |
-| GET | `/scans/history` | Yes | Fetch paginated history with trend deltas |
+| GET | `/scans/sessions/history` | Yes | Fetch paginated history with trend deltas |
+
+## Social Endpoints
+
+| Method | Path | Auth Required | Purpose |
+| --- | --- | --- | --- |
+| GET | `/social/connections` | Yes | List the viewer's social connections |
+| POST | `/social/connections` | Yes | Create a new connection request |
+| POST | `/social/connections/{connectionId}/accept` | Yes | Accept a pending connection |
+| POST | `/social/connections/{connectionId}/decline` | Yes | Decline a pending connection |
+| GET | `/business/vitality-streak` | Yes | Return the viewer's streak summary |
+
+Feed-specific APIs such as `/social/circle/summary`, `/social/feed`, reactions,
+comments, discovery, and social preferences are intentionally documented in the
+dedicated Vitality Glow contract doc until they are implemented in
+`service-core`.
 
 ## Audit Endpoints
 

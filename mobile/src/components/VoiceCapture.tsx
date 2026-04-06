@@ -10,9 +10,11 @@
  */
 
 import { Audio } from 'expo-av';
+import { MaterialIcons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { pranaPulseShadow, pranaPulseTheme, withAlpha } from '../theme/pranaPulse';
 import {
   AUDIO_SNR_PASS_THRESHOLD_DB,
   TARGET_AUDIO_SAMPLE_COUNT,
@@ -295,7 +297,10 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
   if (!permission) {
     return (
       <View style={styles.container} testID="voice-capture">
-        <Text style={styles.messageText}>Requesting microphone access...</Text>
+        <View style={styles.permissionCard}>
+          <MaterialIcons color={pranaPulseTheme.colors.primary} name="mic-none" size={28} />
+          <Text style={styles.messageText}>Requesting microphone access...</Text>
+        </View>
       </View>
     );
   }
@@ -303,92 +308,136 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
   if (!permission.granted) {
     return (
       <View style={styles.container} testID="voice-capture">
-        <Text style={styles.messageText} testID="mic-permission-message">
-          Microphone access is needed for the voice check.
-        </Text>
-        <Text style={styles.subtitle}>
-          Your recording stays on your device. Only derived wellness signals are shared.
-        </Text>
-        <TouchableOpacity
-          style={styles.recordButton}
-          onPress={requestPermission}
-          testID="allow-mic"
-        >
-          <Text style={styles.recordButtonText}>Allow Microphone</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.cancelButton} onPress={onCancel} testID="cancel-voice">
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </TouchableOpacity>
+        <View style={styles.permissionCard}>
+          <View style={styles.permissionIconShell}>
+            <MaterialIcons color={pranaPulseTheme.colors.secondary} name="graphic-eq" size={28} />
+          </View>
+          <Text style={styles.title}>Voice Step</Text>
+          <Text style={styles.messageText} testID="mic-permission-message">
+            Microphone access is needed for the voice check.
+          </Text>
+          <Text style={styles.subtitle}>
+            Your recording stays on your device. Only derived wellness signals are shared.
+          </Text>
+          <TouchableOpacity
+            style={styles.recordButton}
+            onPress={requestPermission}
+            testID="allow-mic"
+          >
+            <Text style={styles.recordButtonText}>Allow Microphone</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.cancelButton} onPress={onCancel} testID="cancel-voice">
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
+  const stateLabel =
+    recordingState === 'recording'
+      ? 'Listening'
+      : recordingState === 'processing'
+        ? 'Processing'
+        : recordingState === 'done'
+          ? 'Complete'
+          : 'Ready';
+
   return (
     <View style={styles.container} testID="voice-capture">
-      <Text style={styles.title}>Voice Check</Text>
-      <Text style={styles.subtitle}>
-        Say &quot;Aaah&quot; in a steady tone for 5 seconds in a quiet space.
-      </Text>
-
-      <View style={styles.waveContainer} testID="waveform">
-        {waveAmplitudes.map((amp, index) => (
-          <View
-            key={index}
-            style={[
-              styles.waveBar,
-              {
-                height: Math.max(4, amp * 60),
-                backgroundColor:
-                  recordingState === 'recording' ? '#4f46e5' : '#2a2a4e',
-              },
-            ]}
-          />
-        ))}
-      </View>
-
-      {(recordingState === 'recording' || recordingState === 'processing') && (
-        <View style={styles.progressBar}>
-          <View
-            style={[styles.progressFill, { width: `${progressPct}%` as `${number}%` }]}
-          />
+      <View style={styles.heroSection}>
+        <View style={styles.heroBadge}>
+          <MaterialIcons color={pranaPulseTheme.colors.primary} name="multitrack-audio" size={18} />
+          <Text style={styles.heroBadgeText}>Voice Step</Text>
         </View>
-      )}
-
-      <Text style={styles.timerText} testID="voice-timer">
-        {recordingState === 'recording'
-          ? `${timeRemaining}s remaining`
-          : recordingState === 'processing'
-          ? 'Processing...'
-          : recordingState === 'done'
-          ? 'Done'
-          : 'Ready'}
-      </Text>
-
-      <View style={styles.buttonRow}>
-        {recordingState === 'idle' && (
-          <TouchableOpacity
-            style={styles.recordButton}
-            onPress={startRecording}
-            testID="start-voice"
-          >
-            <Text style={styles.recordButtonText}>Start Voice Check</Text>
-          </TouchableOpacity>
-        )}
-
-        {recordingState === 'recording' && (
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => void handleCancel()}
-            testID="cancel-voice"
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-        )}
+        <Text style={styles.title}>Finish with a calm, steady vowel.</Text>
+        <Text style={styles.subtitle}>
+          Say &quot;Aaah&quot; in a steady tone for 5 seconds in a quiet space.
+        </Text>
       </View>
 
-      <Text style={styles.disclaimer}>
-        Voice recordings stay on your device. Only wellness indicators are shared.
-      </Text>
+      <View style={styles.panel}>
+        <View style={styles.panelGlowPrimary} />
+        <View style={styles.panelGlowSecondary} />
+
+        <View style={styles.statusRow}>
+          <Text style={styles.timerText} testID="voice-timer">
+            {recordingState === 'recording'
+              ? `${timeRemaining}s remaining`
+              : recordingState === 'processing'
+                ? 'Processing...'
+                : recordingState === 'done'
+                  ? 'Done'
+                  : 'Ready'}
+          </Text>
+          <View style={styles.statePill}>
+            <Text style={styles.statePillText}>{stateLabel}</Text>
+          </View>
+        </View>
+
+        <View style={styles.waveContainer} testID="waveform">
+          {waveAmplitudes.map((amp, index) => (
+            <View
+              key={index}
+              style={[
+                styles.waveBar,
+                {
+                  height: Math.max(8, amp * 74),
+                  backgroundColor:
+                    recordingState === 'recording'
+                      ? pranaPulseTheme.colors.secondary
+                      : pranaPulseTheme.colors.surfaceDim,
+                },
+              ]}
+            />
+          ))}
+        </View>
+
+        {(recordingState === 'recording' || recordingState === 'processing') && (
+          <View style={styles.progressBar}>
+            <View
+              style={[styles.progressFill, { width: `${progressPct}%` as `${number}%` }]}
+            />
+          </View>
+        )}
+
+        <View style={styles.guidanceRow}>
+          <View style={styles.guidanceChip}>
+            <MaterialIcons color={pranaPulseTheme.colors.primary} name="hearing" size={14} />
+            <Text style={styles.guidanceText}>Quiet room</Text>
+          </View>
+          <View style={styles.guidanceChip}>
+            <MaterialIcons color={pranaPulseTheme.colors.secondary} name="air" size={14} />
+            <Text style={styles.guidanceText}>Steady breath</Text>
+          </View>
+        </View>
+
+        <View style={styles.buttonRow}>
+          {recordingState === 'idle' && (
+            <TouchableOpacity
+              style={styles.recordButton}
+              onPress={startRecording}
+              testID="start-voice"
+            >
+              <Text style={styles.recordButtonText}>Start Voice Check</Text>
+            </TouchableOpacity>
+          )}
+
+          {recordingState === 'recording' && (
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => void handleCancel()}
+              testID="cancel-voice"
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <Text style={styles.disclaimer}>
+          Voice recordings stay on your device. Only wellness indicators are shared.
+        </Text>
+      </View>
     </View>
   );
 }
@@ -396,92 +445,190 @@ export function VoiceCapture({ onComplete, onCancel }: VoiceCaptureProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f0f1a',
+    justifyContent: 'center',
+  },
+  heroSection: {
+    marginBottom: 18,
+    gap: 8,
+  },
+  heroBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 40,
-    paddingHorizontal: 20,
+    gap: 6,
+    borderRadius: pranaPulseTheme.radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.primaryContainer, 0.62),
+  },
+  heroBadgeText: {
+    fontFamily: pranaPulseTheme.fonts.bold,
+    color: pranaPulseTheme.colors.primary,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginBottom: 8,
+    fontFamily: pranaPulseTheme.fonts.extraBold,
+    fontSize: 28,
+    color: pranaPulseTheme.colors.onSurface,
   },
   subtitle: {
-    fontSize: 15,
-    color: '#aaaacc',
-    textAlign: 'center',
+    fontFamily: pranaPulseTheme.fonts.medium,
+    fontSize: 14,
+    color: pranaPulseTheme.colors.onSurfaceVariant,
     lineHeight: 22,
-    marginBottom: 32,
+  },
+  panel: {
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: pranaPulseTheme.radius.lg,
+    padding: 20,
+    backgroundColor: pranaPulseTheme.colors.surfaceContainerLowest,
+    gap: 16,
+    ...pranaPulseShadow,
+  },
+  panelGlowPrimary: {
+    position: 'absolute',
+    top: -26,
+    right: -24,
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.primaryContainer, 0.68),
+  },
+  panelGlowSecondary: {
+    position: 'absolute',
+    bottom: -20,
+    left: -20,
+    width: 116,
+    height: 116,
+    borderRadius: 58,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.secondaryContainer, 0.62),
+  },
+  permissionCard: {
+    borderRadius: pranaPulseTheme.radius.lg,
+    padding: 24,
+    alignItems: 'center',
+    backgroundColor: pranaPulseTheme.colors.surfaceContainerLowest,
+    gap: 12,
+    ...pranaPulseShadow,
+  },
+  permissionIconShell: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(pranaPulseTheme.colors.secondaryContainer, 0.8),
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   waveContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    height: 80,
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    height: 108,
     gap: 3,
-    marginBottom: 20,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+    borderRadius: pranaPulseTheme.radius.md,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.surfaceContainer, 0.88),
   },
   waveBar: {
-    width: 8,
-    borderRadius: 4,
-    minHeight: 4,
+    flex: 1,
+    borderRadius: 999,
+    minHeight: 8,
   },
   progressBar: {
     width: '100%',
-    height: 4,
-    backgroundColor: '#2a2a4e',
-    borderRadius: 2,
+    height: 6,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.surfaceDim, 0.8),
+    borderRadius: 999,
     overflow: 'hidden',
-    marginBottom: 12,
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#4f46e5',
-    borderRadius: 2,
+    backgroundColor: pranaPulseTheme.colors.primary,
+    borderRadius: 999,
   },
   timerText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#aaaacc',
-    marginBottom: 12,
+    fontFamily: pranaPulseTheme.fonts.extraBold,
+    fontSize: 20,
+    color: pranaPulseTheme.colors.onSurface,
+  },
+  statePill: {
+    borderRadius: pranaPulseTheme.radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.surfaceContainer, 0.92),
+  },
+  statePillText: {
+    fontFamily: pranaPulseTheme.fonts.bold,
+    fontSize: 11,
+    color: pranaPulseTheme.colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  guidanceRow: {
+    flexDirection: 'row',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  guidanceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: pranaPulseTheme.radius.full,
+    backgroundColor: pranaPulseTheme.colors.surfaceContainer,
+  },
+  guidanceText: {
+    fontFamily: pranaPulseTheme.fonts.bold,
+    fontSize: 12,
+    color: pranaPulseTheme.colors.onSurfaceVariant,
   },
   buttonRow: {
     width: '100%',
   },
   recordButton: {
-    backgroundColor: '#4f46e5',
-    borderRadius: 14,
+    backgroundColor: pranaPulseTheme.colors.primary,
+    borderRadius: pranaPulseTheme.radius.full,
     paddingVertical: 16,
     alignItems: 'center',
-    marginBottom: 12,
   },
   recordButtonText: {
-    color: '#ffffff',
-    fontSize: 17,
-    fontWeight: '700',
+    fontFamily: pranaPulseTheme.fonts.extraBold,
+    color: pranaPulseTheme.colors.onPrimary,
+    fontSize: 16,
   },
   cancelButton: {
-    backgroundColor: '#2a1a1a',
-    borderRadius: 14,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.secondaryContainer, 0.72),
+    borderRadius: pranaPulseTheme.radius.full,
     paddingVertical: 16,
     alignItems: 'center',
   },
   cancelButtonText: {
-    color: '#fca5a5',
+    fontFamily: pranaPulseTheme.fonts.extraBold,
+    color: pranaPulseTheme.colors.secondary,
     fontSize: 16,
-    fontWeight: '600',
   },
   disclaimer: {
+    fontFamily: pranaPulseTheme.fonts.medium,
     fontSize: 12,
-    color: '#555570',
+    color: pranaPulseTheme.colors.onSurfaceVariant,
     textAlign: 'center',
     lineHeight: 18,
-    marginTop: 20,
   },
   messageText: {
+    fontFamily: pranaPulseTheme.fonts.bold,
     fontSize: 16,
-    color: '#ffffff',
+    color: pranaPulseTheme.colors.onSurface,
     textAlign: 'center',
-    marginBottom: 12,
   },
 });

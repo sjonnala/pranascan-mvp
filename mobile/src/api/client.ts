@@ -8,6 +8,7 @@ import {
   ConsentRecord,
   ConsentStatus,
   CoreUserProfile,
+  ScanHistoryPage,
   ScanFeedback,
   ScanFeedbackPayload,
   ScanResult,
@@ -15,6 +16,9 @@ import {
   ScanSession,
   ScanType,
   ScanSessionWithResult,
+  SocialConnection,
+  VitalityReport,
+  VitalityStreak,
 } from '../types';
 
 const CORE_BASE_URL =
@@ -138,6 +142,51 @@ export async function completeScanSession(
 export async function getScanSession(sessionId: string): Promise<ScanSessionWithResult> {
   const { data } = await coreHttp.get<ScanSessionWithResult>(
     `/scans/sessions/${sessionId}`,
+    authConfig(requireCoreAccessToken())
+  );
+  return data;
+}
+
+export async function getScanHistory(
+  page = 1,
+  pageSize = 20
+): Promise<ScanHistoryPage> {
+  const { data } = await coreHttp.get<ScanHistoryPage>('/scans/sessions/history', {
+    ...authConfig(requireCoreAccessToken()),
+    params: {
+      page,
+      page_size: pageSize,
+    },
+  });
+  return data;
+}
+
+export async function getCurrentVitalityStreak(): Promise<VitalityStreak> {
+  const { data } = await coreHttp.get<VitalityStreak>(
+    '/business/vitality-streak',
+    authConfig(requireCoreAccessToken())
+  );
+  return data;
+}
+
+export async function getLatestVitalityReport(): Promise<VitalityReport | null> {
+  try {
+    const { data } = await coreHttp.get<VitalityReport>(
+      '/reports/latest',
+      authConfig(requireCoreAccessToken())
+    );
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function listSocialConnections(): Promise<SocialConnection[]> {
+  const { data } = await coreHttp.get<SocialConnection[]>(
+    '/social/connections',
     authConfig(requireCoreAccessToken())
   );
   return data;

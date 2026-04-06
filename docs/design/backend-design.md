@@ -13,6 +13,7 @@ The repo now uses a split backend with clear ownership:
 - consent/privacy workflows
 - scan session lifecycle and result persistence
 - trend history, reporting, feedback, and audit
+- the social graph, vitality streaks, and Circle/Vitality Glow feed APIs
 
 `service-intelligence` owns:
 
@@ -38,6 +39,7 @@ The repo now uses a split backend with clear ownership:
 - `service-core/src/main/java/com/pranapulse/core/consent`
 - `service-core/src/main/java/com/pranapulse/core/scan`
 - `service-core/src/main/java/com/pranapulse/core/report`
+- `service-core/src/main/java/com/pranapulse/core/social`
 - `service-core/src/main/java/com/pranapulse/core/audit`
 - `service-core/src/main/java/com/pranapulse/core/infrastructure/intelligence`
 
@@ -84,7 +86,7 @@ Persisted product truth belongs in `service-core`:
 - users
 - consent ledger
 - scan sessions and scan results
-- social graph and streaks
+- social graph, streaks, and social feed state
 - feedback
 - reports
 - audit records
@@ -100,6 +102,7 @@ Add new product-facing features to `service-core` when they require:
 - new tables in the core domain
 - user-visible reporting or history
 - policy or consent checks
+- social graph or feed visibility enforcement
 
 Add new compute features to `service-intelligence` when they are:
 
@@ -109,6 +112,9 @@ Add new compute features to `service-intelligence` when they are:
 
 ## Notes For Contributors
 
+- If you are implementing Circle or the Stitch-style Vitality Glow feed, use
+  [vitality-glow-feed-contract.md](./vitality-glow-feed-contract.md) as the
+  backend contract source of truth.
 - If you are looking for public product APIs, start in `service-core`, not in
   `service-intelligence`.
 - If you need to change scan compute behavior, follow the `EvaluateScan`

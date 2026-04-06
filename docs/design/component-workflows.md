@@ -100,27 +100,26 @@ ScanScreen mount
 ```text
 CameraCapture.startScan()
   -> request camera permission if needed
-  -> start 30s timer
-  -> capture low-quality JPEG frame every 500ms
-  -> derive lighting, motion, face-confidence heuristics
+  -> start scan timer (30s standard / 60s deep_dive)
+  -> stream centre-ROI RGB means from the Vision Camera frame processor
+  -> derive lighting, motion, and face-confidence heuristics from RGB samples
   -> emit live quality metrics to ScanScreen
   -> build FrameSample list
-  -> after 30s run on-device rPPG
   -> return CameraResult to ScanScreen
+ScanScreen.submitCapturedScan()
+  -> submit frame_data + aggregate RGB means + quality metadata to service-core
+  -> service-intelligence computes server-side rPPG or morphology
 ```
 
 ### What CameraCapture Produces
 
-- `hr_bpm`
-- `hrv_ms`
-- `respiratory_rate`
 - `quality_score`
 - `quality` object for lighting, motion, face confidence, audio placeholder
-- `frame_data` retained in memory on device
+- `frame_data`
 - aggregate RGB means:
   - `frame_r_mean`
   - `frame_g_mean`
-- `frame_b_mean`
+  - `frame_b_mean`
 
 ### Quality Feedback Loop
 

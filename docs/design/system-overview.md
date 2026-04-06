@@ -37,8 +37,8 @@ backend accepts it:
 
 | Dimension | Current Threshold | Notes |
 | --- | --- | --- |
-| Lighting | `> 0.4` | Derived from JPEG heuristics on mobile |
-| Motion | `>= 0.95` | Derived from frame-to-frame JPEG similarity |
+| Lighting | `> 0.4` | Derived from centre-ROI RGB luminance on mobile |
+| Motion | `>= 0.95` | Derived from frame-to-frame RGB mean deltas |
 | Face confidence | `> 0.8` | Mobile heuristic today, native detector later |
 | Audio SNR | `> 15 dB` | Derived from real voice capture |
 
@@ -48,7 +48,7 @@ The codebase is in a transition state between two modes:
 
 | Concern | Current Mobile Path | Backend Capability |
 | --- | --- | --- |
-| rPPG | On-device in `mobile/src/utils/rppgProcessor.ts` | Legacy or fallback server-side processing still exists |
+| rPPG | Vision Camera ROI capture + quality scoring; submits `frame_data` | Active server-side POS / morphology processing in `service-intelligence` |
 | Voice DSP | On-device in `mobile/src/utils/voiceProcessor.ts` | Legacy or fallback server-side processing still exists |
 | Trend engine | Backend-owned | Backend-owned |
 | Vascular age | Not shown in mobile UI | Computed and persisted by backend |
@@ -57,8 +57,8 @@ The codebase is in a transition state between two modes:
 
 The important onboarding takeaway is this:
 
-- The architecture target is edge-first.
-- The mobile app largely follows that target now.
+- The voice path is edge-first.
+- The camera path is capture-on-device plus server-side signal processing today.
 - The backend still preserves compatibility with older payload shapes.
 
 ## Runtime Architecture
@@ -146,11 +146,11 @@ The important onboarding takeaway is this:
 1. Mobile completes OIDC login and stores the core access token.
 2. User grants consent through `service-core`.
 3. Mobile creates a scan session through `service-core`.
-4. Camera step captures frames, derives quality metrics, and runs on-device rPPG.
+4. Camera step captures centre-ROI RGB traces, derives quality metrics, and builds `frame_data`.
 5. Voice step records audio, derives SNR, and runs on-device voice DSP.
-6. Mobile submits scalar wellness indicators plus optional raw media data.
+6. Mobile submits `frame_data`, aggregate RGB means, camera quality metadata, and on-device voice indicators.
 7. `service-core` calls `service-intelligence` over gRPC for `EvaluateScan`.
-8. `service-intelligence` validates quality and computes derived heuristics.
+8. `service-intelligence` validates quality, runs server-side rPPG or morphology, and computes derived heuristics.
 9. `service-core` persists the result, trend state, and related product history.
 10. Mobile fetches and renders the core-owned result.
 

@@ -116,6 +116,226 @@ export interface ScanSessionWithResult {
   result: ScanResult | null;
 }
 
+export interface ScanHistoryItem {
+  session: ScanSession;
+  result: ScanResult | null;
+  hr_trend_delta: number | null;
+  hrv_trend_delta: number | null;
+}
+
+export interface ScanHistoryPage {
+  items: ScanHistoryItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface VitalityReport {
+  id: string;
+  user_id: string;
+  period_start: string;
+  period_end: string;
+  scan_count: number;
+  alert_count: number;
+  avg_hr_bpm: number | null;
+  avg_hrv_ms: number | null;
+  avg_respiratory_rate: number | null;
+  avg_voice_jitter_pct: number | null;
+  avg_voice_shimmer_pct: number | null;
+  delta_hr_bpm: number | null;
+  delta_hrv_ms: number | null;
+  latest_vascular_age_estimate: number | null;
+  latest_vascular_age_confidence: number | null;
+  latest_anemia_label: string | null;
+  latest_anemia_confidence: number | null;
+  summary_text: string;
+  generated_at: string;
+}
+
+export type VitalityStreakStatus = 'ACTIVE' | 'AT_RISK' | 'BROKEN';
+
+export interface VitalityStreak {
+  id: string;
+  userId: string;
+  currentStreakDays: number;
+  longestStreakDays: number;
+  lastCheckInOn: string | null;
+  streakStartedOn: string | null;
+  graceWindowEndsOn: string | null;
+  status: VitalityStreakStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SocialConnectionStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED';
+
+export interface SocialConnection {
+  id: string;
+  requesterUserId: string;
+  requesterDisplayName: string;
+  addresseeUserId: string;
+  addresseeDisplayName: string;
+  status: SocialConnectionStatus;
+  respondedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SocialFeedPostType =
+  | 'scan_share'
+  | 'streak_milestone'
+  | 'connection_joined'
+  | 'reflection_note';
+
+export type SocialFeedAudience =
+  | 'connections'
+  | 'selected_connections'
+  | 'private';
+
+export type SocialFeedScope = 'all' | 'connections' | 'self';
+
+export type SocialFeedReactionType =
+  | 'acknowledge'
+  | 'celebrate'
+  | 'support';
+
+export type SocialFeedTone =
+  | 'sage'
+  | 'sunset'
+  | 'cream'
+  | 'mist'
+  | 'neutral';
+
+export type SocialFeedShareMode = 'summary_only' | 'selected_metrics';
+
+export type SocialFeedMetricKey =
+  | 'hrBpm'
+  | 'hrvMs'
+  | 'respiratoryRate'
+  | 'spo2'
+  | 'stiffnessIndex'
+  | 'qualityScore';
+
+export interface SocialFeedUserPreview {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export interface SocialCircleMemberPreview extends SocialFeedUserPreview {
+  lastActivityAt: string | null;
+}
+
+export interface SocialCircleSummary {
+  activeConnectionCount: number;
+  pendingInviteCount: number;
+  unreadFeedCount: number;
+  latestActivityAt: string | null;
+  membersPreview: SocialCircleMemberPreview[];
+}
+
+export interface SocialFeedMetric {
+  key: SocialFeedMetricKey;
+  label: string;
+  value: string;
+  unit: string | null;
+}
+
+export interface SocialFeedReactionSummary {
+  reactionType: SocialFeedReactionType;
+  count: number;
+  reactedByViewer: boolean;
+}
+
+export interface SocialFeedViewerState {
+  canReact: boolean;
+  canComment: boolean;
+  canDelete: boolean;
+  canEdit: boolean;
+}
+
+export interface SocialFeedComment {
+  id: string;
+  author: SocialFeedUserPreview;
+  text: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SocialFeedPostSource {
+  sessionId: string | null;
+  scanType: ScanType | null;
+  sharedAt: string | null;
+}
+
+export interface SocialFeedPostDisplay {
+  tone: SocialFeedTone;
+  headline: string;
+  body: string;
+  sharedMetrics: SocialFeedMetric[];
+}
+
+export interface SocialFeedPost {
+  id: string;
+  postType: SocialFeedPostType;
+  audience: SocialFeedAudience;
+  author: SocialFeedUserPreview;
+  source: SocialFeedPostSource;
+  display: SocialFeedPostDisplay;
+  reactionSummary: SocialFeedReactionSummary[];
+  commentCount: number;
+  latestComments: SocialFeedComment[];
+  viewerState: SocialFeedViewerState;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SocialFeedPage {
+  items: SocialFeedPost[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+export interface SocialFeedCommentsPage {
+  items: SocialFeedComment[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+export interface CreateSocialFeedPostPayload {
+  postType: Extract<SocialFeedPostType, 'scan_share' | 'reflection_note'>;
+  audience: SocialFeedAudience;
+  sessionId?: string;
+  text?: string;
+  shareMode?: SocialFeedShareMode;
+  sharedMetricKeys?: SocialFeedMetricKey[];
+  targetConnectionIds?: string[];
+}
+
+export interface SocialFeedReactionPayload {
+  reactionType: SocialFeedReactionType;
+}
+
+export interface SocialFeedCommentPayload {
+  text: string;
+}
+
+export interface SocialFeedPreferences {
+  defaultShareAudience: SocialFeedAudience;
+  defaultShareMode: SocialFeedShareMode;
+  allowComments: boolean;
+  allowReactions: boolean;
+  autoShareMilestones: boolean;
+}
+
+export interface SocialDiscoveryUser extends SocialFeedUserPreview {
+  connectionStatus: SocialConnectionStatus | null;
+}
+
+export interface SocialFeedReadMarkerPayload {
+  lastSeenPostId: string;
+}
+
 // ─── Feedback ────────────────────────────────────────────────────────────────
 
 export type UsefulResponse = 'useful' | 'needs_work';

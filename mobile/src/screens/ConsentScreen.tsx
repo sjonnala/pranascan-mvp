@@ -3,15 +3,11 @@
  */
 
 import React, { useState } from 'react';
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { PranaPulseReveal } from '../components/pranapulse/PranaPulseReveal';
+import { PranaPulseScaffold } from '../components/pranapulse/PranaPulseScaffold';
 import { useConsent } from '../hooks/useConsent';
+import { pranaPulseShadow, pranaPulseTheme, withAlpha } from '../theme/pranaPulse';
 
 interface ConsentScreenProps {
   onConsentGranted: () => void;
@@ -46,213 +42,219 @@ export function ConsentScreen({ onConsentGranted }: ConsentScreenProps) {
 
   if (isLoading) {
     return (
-      <View style={styles.centered} testID="consent-loading">
-        <ActivityIndicator size="large" color="#4f46e5" />
-      </View>
+      <PranaPulseScaffold activeTab="home" scroll={false} showBottomNav={false}>
+        <View style={styles.centered} testID="consent-loading">
+          <ActivityIndicator size="large" color={pranaPulseTheme.colors.primary} />
+        </View>
+      </PranaPulseScaffold>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      testID="consent-screen"
-    >
-      <View style={styles.header}>
-        <Text style={styles.logo}>🫁</Text>
-        <Text style={styles.title}>Welcome to PranaScan</Text>
-        <Text style={styles.subtitle}>
-          Your personal wellness check-in — takes about 35 seconds.
-        </Text>
+    <PranaPulseScaffold activeTab="home" showBottomNav={false}>
+      <View style={styles.content} testID="consent-screen">
+        <PranaPulseReveal delay={20}>
+          <View style={styles.header}>
+            <Text style={styles.eyebrow}>Consent</Text>
+            <Text style={styles.title}>Begin with clarity</Text>
+            <Text style={styles.subtitle}>
+              Your Daily Glow check-in takes about 35 seconds. Here is exactly what PranaPulse captures and stores.
+            </Text>
+          </View>
+        </PranaPulseReveal>
+
+        <PranaPulseReveal delay={100}>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>What PranaPulse does</Text>
+            <Text style={styles.cardText}>
+              • Uses your front camera for 30 seconds to estimate heart rate and breathing patterns.{'\n'}
+              • Uses your microphone for 5 seconds for a quick voice wellness check.{'\n'}
+              • Keeps video and audio on your phone; only summary wellness values reach the backend.{'\n'}
+              • Stores pseudonymous wellness trends so your results stay connected over time.
+            </Text>
+          </View>
+        </PranaPulseReveal>
+
+        <PranaPulseReveal delay={160}>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>What it is not</Text>
+            <Text style={styles.cardText}>
+              PranaPulse is a wellness indicator tool, not a medical device. The results are for informational self-monitoring only. Always consult a qualified clinician for health concerns.
+            </Text>
+          </View>
+        </PranaPulseReveal>
+
+        <PranaPulseReveal delay={220}>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Your data rights</Text>
+            <Text style={styles.cardText}>
+              • You can revoke consent and request deletion at any time from Settings.{'\n'}
+              • Deletion requests are honored within the configured legal hold window.{'\n'}
+              • Your data is never sold or shared with advertisers.
+            </Text>
+          </View>
+        </PranaPulseReveal>
+
+        {error ? (
+          <PranaPulseReveal delay={260}>
+            <View style={styles.errorBox} testID="consent-error">
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          </PranaPulseReveal>
+        ) : null}
+
+        <PranaPulseReveal delay={300}>
+          <TouchableOpacity
+            style={styles.checkRow}
+            onPress={() => setChecked((current) => !current)}
+            testID="consent-checkbox"
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked }}
+          >
+            <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
+              {checked ? <Text style={styles.checkmark}>OK</Text> : null}
+            </View>
+            <Text style={styles.checkLabel}>
+              I understand that PranaPulse provides wellness indicators only, not medical advice, and I consent to my wellness data being stored to track my trends.
+            </Text>
+          </TouchableOpacity>
+        </PranaPulseReveal>
+
+        <PranaPulseReveal delay={340}>
+          <TouchableOpacity
+            style={[styles.agreeButton, (!checked || submitting) && styles.agreeButtonDisabled]}
+            onPress={handleAgree}
+            disabled={!checked || submitting}
+            testID="consent-agree-button"
+          >
+            {submitting ? (
+              <ActivityIndicator color={pranaPulseTheme.colors.onPrimary} />
+            ) : (
+              <Text style={styles.agreeButtonText}>I Agree - Start Scan</Text>
+            )}
+          </TouchableOpacity>
+        </PranaPulseReveal>
+
+        <PranaPulseReveal delay={380}>
+          <Text style={styles.footerText}>
+            You can withdraw consent at any time in Settings. This consent is recorded against your signed-in PranaPulse account.
+          </Text>
+        </PranaPulseReveal>
       </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>What PranaScan does</Text>
-        <Text style={styles.cardText}>
-          • Uses your front camera (30 seconds) to estimate heart rate and breathing patterns.{'\n'}
-          • Uses your microphone (5 seconds) for a quick voice wellness check.{'\n'}
-          • All processing happens on your phone — your video and audio are never sent anywhere.{'\n'}
-          • Only anonymised wellness numbers are stored on our servers.
-        </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>What PranaScan is not</Text>
-        <Text style={styles.cardText}>
-          PranaScan is a wellness indicator tool, not a medical device. The results are for
-          informational self-monitoring only. Always consult a qualified doctor for any health
-          concerns.
-        </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Your data rights</Text>
-        <Text style={styles.cardText}>
-          • You can revoke consent and request data deletion at any time from Settings.{'\n'}
-          • Deletion requests are honoured within 30 days (legal hold period).{'\n'}
-          • We never sell your data or share it with advertisers.
-        </Text>
-      </View>
-
-      {error ? (
-        <View style={styles.errorBox} testID="consent-error">
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : null}
-
-      <TouchableOpacity
-        style={styles.checkRow}
-        onPress={() => setChecked((current) => !current)}
-        testID="consent-checkbox"
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked }}
-      >
-        <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-          {checked ? <Text style={styles.checkmark}>✓</Text> : null}
-        </View>
-        <Text style={styles.checkLabel}>
-          I understand that PranaScan provides wellness indicators only — not medical advice — and I
-          consent to anonymous wellness data being stored to track my trends.
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.agreeButton, (!checked || submitting) && styles.agreeButtonDisabled]}
-        onPress={handleAgree}
-        disabled={!checked || submitting}
-        testID="consent-agree-button"
-      >
-        {submitting ? (
-          <ActivityIndicator color="#ffffff" />
-        ) : (
-          <Text style={styles.agreeButtonText}>I Agree — Start Scan</Text>
-        )}
-      </TouchableOpacity>
-
-      <Text style={styles.footerText}>
-        You can withdraw consent at any time in Settings. This consent is stored in compliance
-        with the Digital Personal Data Protection Act 2023 (India).
-      </Text>
-    </ScrollView>
+    </PranaPulseScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f0f1a',
-  },
   content: {
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 40,
+    gap: 14,
+    paddingBottom: 24,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0f0f1a',
   },
   header: {
-    alignItems: 'center',
-    marginBottom: 32,
+    gap: 8,
+    marginBottom: 6,
   },
-  logo: {
-    fontSize: 48,
-    marginBottom: 12,
+  eyebrow: {
+    ...pranaPulseTheme.type.eyebrow,
+    color: pranaPulseTheme.colors.primary,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginBottom: 8,
-    textAlign: 'center',
+    fontFamily: pranaPulseTheme.fonts.extraBold,
+    color: pranaPulseTheme.colors.onSurface,
+    fontSize: 32,
+    letterSpacing: -0.7,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#aaaacc',
-    textAlign: 'center',
-    lineHeight: 24,
+    ...pranaPulseTheme.type.body,
+    maxWidth: 330,
   },
   card: {
-    backgroundColor: '#1a1a2e',
-    borderRadius: 14,
+    backgroundColor: pranaPulseTheme.colors.surfaceContainerLowest,
+    borderRadius: pranaPulseTheme.radius.md,
     padding: 18,
-    marginBottom: 14,
+    gap: 8,
+    ...pranaPulseShadow,
   },
   cardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginBottom: 8,
+    fontFamily: pranaPulseTheme.fonts.extraBold,
+    fontSize: 16,
+    color: pranaPulseTheme.colors.onSurface,
   },
   cardText: {
+    fontFamily: pranaPulseTheme.fonts.medium,
     fontSize: 14,
-    color: '#aaaacc',
+    color: pranaPulseTheme.colors.onSurfaceVariant,
     lineHeight: 22,
   },
   errorBox: {
-    backgroundColor: '#2a1a1a',
-    borderRadius: 10,
+    borderRadius: pranaPulseTheme.radius.md,
     padding: 14,
-    marginBottom: 14,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.secondaryContainer, 0.74),
   },
   errorText: {
-    color: '#f87171',
+    color: pranaPulseTheme.colors.secondary,
     fontSize: 14,
-    textAlign: 'center',
+    lineHeight: 20,
   },
   checkRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 20,
+    gap: 12,
     marginTop: 4,
   },
   checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 8,
     borderWidth: 2,
-    borderColor: '#4f46e5',
+    borderColor: pranaPulseTheme.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
-    marginTop: 2,
     flexShrink: 0,
+    marginTop: 2,
   },
   checkboxChecked: {
-    backgroundColor: '#4f46e5',
+    backgroundColor: pranaPulseTheme.colors.primary,
   },
   checkmark: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
+    fontFamily: pranaPulseTheme.fonts.bold,
+    color: pranaPulseTheme.colors.onPrimary,
+    fontSize: 10,
+    letterSpacing: 0.6,
   },
   checkLabel: {
+    fontFamily: pranaPulseTheme.fonts.medium,
     flex: 1,
     fontSize: 14,
-    color: '#ccccee',
+    color: pranaPulseTheme.colors.onSurface,
     lineHeight: 22,
   },
   agreeButton: {
-    backgroundColor: '#4f46e5',
-    borderRadius: 14,
-    paddingVertical: 16,
+    backgroundColor: pranaPulseTheme.colors.primary,
+    borderRadius: pranaPulseTheme.radius.full,
+    paddingVertical: 17,
     alignItems: 'center',
-    marginBottom: 20,
+    marginTop: 6,
   },
   agreeButtonDisabled: {
     opacity: 0.4,
   },
   agreeButtonText: {
-    color: '#ffffff',
-    fontSize: 17,
-    fontWeight: '700',
+    fontFamily: pranaPulseTheme.fonts.extraBold,
+    color: pranaPulseTheme.colors.onPrimary,
+    fontSize: 16,
   },
   footerText: {
+    fontFamily: pranaPulseTheme.fonts.medium,
     fontSize: 12,
-    color: '#555577',
+    color: pranaPulseTheme.colors.onSurfaceVariant,
     textAlign: 'center',
     lineHeight: 18,
+    marginTop: 4,
   },
 });

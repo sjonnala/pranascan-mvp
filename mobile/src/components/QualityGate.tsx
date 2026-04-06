@@ -5,8 +5,10 @@
  * and a "Retry" option if any gate fails.
  */
 
+import { MaterialIcons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { pranaPulseShadow, pranaPulseTheme, withAlpha } from '../theme/pranaPulse';
 import { QualityFlag, QualityGateResult, ScanType } from '../types';
 
 const SKIP_QUALITY_GATE = process.env.EXPO_PUBLIC_SKIP_QUALITY_GATE === 'true';
@@ -37,13 +39,26 @@ interface QualityIndicatorProps {
 
 function QualityIndicator({ label, score, threshold }: QualityIndicatorProps) {
   const passed = SKIP_QUALITY_GATE || score > threshold;
+  const percent = Math.max(4, Math.round(score * 100));
+
   return (
-    <View style={styles.indicatorRow} testID={`quality-indicator-${label}`}>
-      <View style={[styles.dot, passed ? styles.dotGood : styles.dotBad]} />
-      <Text style={styles.indicatorLabel}>{label}</Text>
-      <Text style={[styles.indicatorScore, passed ? styles.textGood : styles.textBad]}>
-        {(score * 100).toFixed(0)}%
-      </Text>
+    <View style={styles.indicatorCard} testID={`quality-indicator-${label}`}>
+      <View style={styles.indicatorHeader}>
+        <View style={styles.indicatorLabelRow}>
+          <View style={[styles.dot, passed ? styles.dotGood : styles.dotBad]} />
+          <Text style={styles.indicatorLabel}>{label}</Text>
+        </View>
+        <Text style={[styles.indicatorScore, passed ? styles.textGood : styles.textBad]}>{percent}%</Text>
+      </View>
+      <View style={styles.progressTrack}>
+        <View
+          style={[
+            styles.progressValue,
+            passed ? styles.progressValueGood : styles.progressValueBad,
+            { width: `${percent}%` as `${number}%` },
+          ]}
+        />
+      </View>
     </View>
   );
 }
@@ -58,33 +73,48 @@ interface QualityGateProps {
 export function QualityGate({ quality, scanType = 'standard', onRetry, testID }: QualityGateProps) {
   const { passed, flags, metrics, overallScore } = quality;
   const tertiaryLabel = scanType === 'deep_dive' ? 'Contact' : 'Face';
+  const overallLabel = SKIP_QUALITY_GATE ? 'Bypassed' : `${Math.round(overallScore * 100)}%`;
 
   return (
     <View style={styles.container} testID={testID ?? 'quality-gate'}>
-      <Text style={styles.title}>Scan Quality</Text>
+      <View style={styles.headerRow}>
+        <View style={styles.headerCopy}>
+          <Text style={styles.title}>Capture Check</Text>
+          <Text style={styles.subtitle}>
+            {scanType === 'deep_dive'
+              ? 'Keep firm thumb contact while the pulse trace settles.'
+              : 'Stay steady and let the ghost guide hold your alignment.'}
+          </Text>
+        </View>
 
-      <View style={styles.overallRow}>
-        <Text style={styles.overallLabel}>Overall</Text>
-        <Text style={[styles.overallScore, passed ? styles.textGood : styles.textBad]}>
-          {SKIP_QUALITY_GATE ? 'Bypassed' : `${(overallScore * 100).toFixed(0)}%`}
-        </Text>
+        <View style={[styles.overallPill, passed ? styles.overallPillGood : styles.overallPillBad]}>
+          <MaterialIcons
+            color={passed ? pranaPulseTheme.colors.primary : pranaPulseTheme.colors.secondary}
+            name={passed ? 'verified' : 'pending'}
+            size={16}
+          />
+          <Text style={[styles.overallScore, passed ? styles.textGood : styles.textBad]}>{overallLabel}</Text>
+        </View>
+      </View>
+
+      <View style={styles.indicatorStack}>
+        <QualityIndicator label="Lighting" score={metrics.lighting_score} threshold={0.4} />
+        <QualityIndicator label="Steady" score={metrics.motion_score} threshold={0.95} />
+        <QualityIndicator label={tertiaryLabel} score={metrics.face_confidence} threshold={0.8} />
       </View>
 
       {SKIP_QUALITY_GATE && (
-        <View style={styles.passedBanner} testID="quality-gate-bypassed">
-          <Text style={styles.passedText}>Local testing mode — quality gate bypassed</Text>
+        <View style={styles.banner} testID="quality-gate-bypassed">
+          <MaterialIcons color={pranaPulseTheme.colors.primary} name="science" size={16} />
+          <Text style={styles.bannerText}>Local testing mode keeps the scan moving.</Text>
         </View>
       )}
-
-      <QualityIndicator label="Lighting" score={metrics.lighting_score} threshold={0.4} />
-      <QualityIndicator label="Steady" score={metrics.motion_score} threshold={0.95} />
-      <QualityIndicator label={tertiaryLabel} score={metrics.face_confidence} threshold={0.8} />
 
       {!passed && flags.length > 0 && (
         <View style={styles.flagsContainer} testID="quality-flags">
           {flags.map((flag) => (
             <View key={flag} style={styles.flagRow}>
-              <Text style={styles.flagEmoji}>⚠️</Text>
+              <MaterialIcons color={pranaPulseTheme.colors.secondary} name="warning-amber" size={16} />
               <Text style={styles.flagText}>{FLAG_LABELS[flag]}</Text>
             </View>
           ))}
@@ -98,9 +128,10 @@ export function QualityGate({ quality, scanType = 'standard', onRetry, testID }:
       )}
 
       {passed && (
-        <View style={styles.passedBanner} testID="quality-passed">
-          <Text style={styles.passedText}>
-            {SKIP_QUALITY_GATE ? '✓ Local testing mode — scan in progress' : '✓ Good quality — scan in progress'}
+        <View style={styles.banner} testID="quality-passed">
+          <MaterialIcons color={pranaPulseTheme.colors.primary} name="check-circle" size={16} />
+          <Text style={styles.bannerText}>
+            {SKIP_QUALITY_GATE ? 'Local testing mode active' : 'Capture quality looks good'}
           </Text>
         </View>
       )}
@@ -110,43 +141,77 @@ export function QualityGate({ quality, scanType = 'standard', onRetry, testID }:
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#1a1a2e',
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: pranaPulseTheme.radius.md,
+    padding: 16,
     marginHorizontal: 16,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.surfaceContainerLowest, 0.94),
+    borderWidth: 1,
+    borderColor: withAlpha(pranaPulseTheme.colors.outlineVariant, 0.28),
+    ...pranaPulseShadow,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  headerCopy: {
+    flex: 1,
+    gap: 4,
   },
   title: {
+    fontFamily: pranaPulseTheme.fonts.extraBold,
     fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 12,
+    color: pranaPulseTheme.colors.onSurface,
   },
-  overallRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2a2a4e',
+  subtitle: {
+    fontFamily: pranaPulseTheme.fonts.medium,
+    fontSize: 12,
+    lineHeight: 18,
+    color: pranaPulseTheme.colors.onSurfaceVariant,
   },
-  overallLabel: {
-    fontSize: 14,
-    color: '#aaaacc',
-  },
-  overallScore: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  indicatorRow: {
+  overallPill: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: pranaPulseTheme.radius.full,
+  },
+  overallPillGood: {
+    backgroundColor: withAlpha(pranaPulseTheme.colors.primaryContainer, 0.72),
+  },
+  overallPillBad: {
+    backgroundColor: withAlpha(pranaPulseTheme.colors.secondaryContainer, 0.8),
+  },
+  overallScore: {
+    fontFamily: pranaPulseTheme.fonts.bold,
+    fontSize: 12,
+  },
+  indicatorStack: {
+    gap: 10,
+  },
+  indicatorCard: {
+    borderRadius: 18,
+    padding: 12,
+    backgroundColor: pranaPulseTheme.colors.surfaceContainer,
+  },
+  indicatorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  indicatorLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   dot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    marginRight: 10,
   },
   dotGood: {
     backgroundColor: '#4ade80',
@@ -155,60 +220,82 @@ const styles = StyleSheet.create({
     backgroundColor: '#f87171',
   },
   indicatorLabel: {
-    flex: 1,
-    fontSize: 14,
-    color: '#ccccee',
+    fontFamily: pranaPulseTheme.fonts.bold,
+    fontSize: 13,
+    color: pranaPulseTheme.colors.onSurface,
   },
   indicatorScore: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontFamily: pranaPulseTheme.fonts.bold,
+    fontSize: 12,
   },
   textGood: {
-    color: '#4ade80',
+    color: pranaPulseTheme.colors.primary,
   },
   textBad: {
-    color: '#f87171',
+    color: pranaPulseTheme.colors.secondary,
+  },
+  progressTrack: {
+    width: '100%',
+    height: 7,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: withAlpha(pranaPulseTheme.colors.surfaceDim, 0.72),
+  },
+  progressValue: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  progressValueGood: {
+    backgroundColor: pranaPulseTheme.colors.primary,
+  },
+  progressValueBad: {
+    backgroundColor: pranaPulseTheme.colors.secondary,
   },
   flagsContainer: {
-    marginTop: 12,
+    marginTop: 14,
+    gap: 8,
+    borderRadius: 18,
     padding: 12,
-    backgroundColor: '#2a1a1a',
-    borderRadius: 8,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.secondaryContainer, 0.46),
   },
   flagRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
-  },
-  flagEmoji: {
-    marginRight: 8,
+    gap: 8,
   },
   flagText: {
-    color: '#ffccaa',
-    fontSize: 13,
+    flex: 1,
+    fontFamily: pranaPulseTheme.fonts.medium,
+    fontSize: 12,
+    lineHeight: 18,
+    color: pranaPulseTheme.colors.onSurface,
   },
   retryButton: {
-    marginTop: 16,
-    backgroundColor: '#4f46e5',
-    borderRadius: 12,
-    paddingVertical: 12,
+    marginTop: 14,
+    borderRadius: pranaPulseTheme.radius.full,
+    paddingVertical: 13,
     alignItems: 'center',
+    backgroundColor: pranaPulseTheme.colors.primary,
   },
   retryText: {
-    color: '#ffffff',
-    fontWeight: '600',
-    fontSize: 16,
+    fontFamily: pranaPulseTheme.fonts.extraBold,
+    color: pranaPulseTheme.colors.onPrimary,
+    fontSize: 15,
   },
-  passedBanner: {
-    marginTop: 12,
-    backgroundColor: '#052e16',
-    borderRadius: 8,
-    padding: 10,
+  banner: {
+    marginTop: 14,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.primaryContainer, 0.42),
   },
-  passedText: {
-    color: '#4ade80',
-    fontWeight: '600',
-    fontSize: 14,
+  bannerText: {
+    fontFamily: pranaPulseTheme.fonts.bold,
+    color: pranaPulseTheme.colors.primary,
+    fontSize: 12,
   },
 });

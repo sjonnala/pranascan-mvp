@@ -36,7 +36,8 @@
         }
       ],
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-router"
     ],
     "extra": {
       "coreApiBaseUrl": "http://localhost:8080",

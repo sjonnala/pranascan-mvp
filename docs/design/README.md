@@ -18,15 +18,20 @@ the repo from scratch.
    `service-core` as the product-facing system of record and FastAPI
    `service-intelligence` as the internal compute service.
 
-4. [mobile-design.md](./mobile-design.md)
+4. [vitality-glow-feed-contract.md](./vitality-glow-feed-contract.md)
+   Read this when working on the Circle experience or backend social features.
+   It defines the first-class feed contract required for the full Vitality Glow
+   social experience.
+
+5. [mobile-design.md](./mobile-design.md)
    Use this to understand the React Native app shell, screen flow, hooks,
    on-device signal processing, and payload construction.
 
-5. [data-contracts.md](./data-contracts.md)
+6. [data-contracts.md](./data-contracts.md)
    Use this as the API and schema reference for request/response models and
    persisted tables.
 
-6. [engineering-onboarding.md](./engineering-onboarding.md)
+7. [engineering-onboarding.md](./engineering-onboarding.md)
    Use this as the practical setup and development guide: local run commands,
    test strategy, common gotchas, and recommended first tasks.
 
@@ -36,7 +41,7 @@ These design docs are based on the current checked-in code, not just older plan
 docs. The repo has already crossed the main architecture boundary:
 
 - `service-core` owns product-facing auth, consent, scan orchestration,
-  reporting, feedback, and audit.
+  reporting, feedback, audit, and social product state.
 - `service-intelligence` is now compute-only by default and serves an internal
   gRPC contract to `service-core`.
 - Historical FastAPI public routes and OTP/JWT auth code have been removed from

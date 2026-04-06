@@ -111,7 +111,8 @@ Responsibilities:
 ### Important Behavior
 
 - auth bootstrap is handled by `mobile/src/hooks/useOidcAuth.ts`
-- `service-core` is the public backend for consent, scans, feedback, and reports
+- `service-core` is the public backend for consent, scans, feedback, reports,
+  social connections, streaks, and the planned Vitality Glow feed APIs
 - the old FastAPI `/auth/token` bootstrap path is no longer part of the mobile runtime
 
 ## Scan Orchestration
@@ -138,19 +139,19 @@ Responsibilities:
 
 ### Current Payload Behavior
 
-The current mobile path is edge-first:
+The current mobile path is hybrid:
 
-- `hr_bpm`, `hrv_ms`, `respiratory_rate` come from on-device rPPG
-- `voice_jitter_pct`, `voice_shimmer_pct`, `audio_snr_db` come from on-device voice DSP
-- `frame_data` is intentionally omitted in the current path
-- `audio_samples` is intentionally omitted in the current path
+- `frame_data` is captured from Vision Camera centre-ROI RGB means and submitted on the main scan path
 - aggregate RGB means are submitted as:
   - `frame_r_mean`
   - `frame_g_mean`
   - `frame_b_mean`
+- `voice_jitter_pct`, `voice_shimmer_pct`, `audio_snr_db` come from on-device voice DSP
+- camera-derived `hr_bpm`, `hrv_ms`, and `respiratory_rate` are produced server-side from the submitted `frame_data`
+- `audio_samples` is intentionally omitted in the current path
 
-That means the backend still has fallback compatibility paths, but the current
-mobile client is no longer relying on them for the main scan flow.
+That means the backend compatibility paths still exist, but the current mobile
+client actively uses the `frame_data` path for camera-derived metrics.
 
 ## Camera Pipeline
 
@@ -159,32 +160,35 @@ mobile client is no longer relying on them for the main scan flow.
 Responsibilities:
 
 - request camera permissions
-- render live front-camera preview using `expo-camera`
-- sample JPEG frames every 500ms for 30 seconds
-- derive live quality metrics
+- render a live camera preview using `react-native-vision-camera`
+- stream centre-ROI RGB means from the frame processor at 30 FPS in Standard mode and up to 60 FPS in Deep Dive mode
+- derive live quality metrics from those RGB samples
 - keep a local `FrameSample[]`
-- run on-device rPPG at the end of the capture window
+- return capture and quality payloads to `ScanScreen`
 
 ### Quality Heuristics
 
 Implemented in `frameAnalyzer.ts`:
 
-- `computeLightingScore(base64)`
-- `computeMotionScore(prevBase64, currBase64)`
-- `computeFaceConfidence(base64, lighting, motion)`
-- `buildFrameSample(base64, tMs)`
+- `computeLightingScoreFromRgb(sample)`
+- `computeMotionScoreFromRgb(previous, current)`
+- `computeFaceConfidenceFromRgb(sample, lighting, motion)`
+- `buildFrameSampleFromRgb(sample, tMs)`
+- `aggregateQualityMetrics(...)`
 - `computeOverallQualityScore(...)`
 
 Important detail:
 
 - face detection is currently heuristic, not ML-based
-- the code intentionally documents this as a placeholder for a native detector
+- Deep Dive uses a lighting-and-motion proxy instead of selfie-style face confidence
 
-### On-Device rPPG
+### Local rPPG Utility
 
-Implemented in `rppgProcessor.ts`.
+`rppgProcessor.ts` still exists in the mobile repo, but it is not the active
+submitted camera path today. The live scan flow sends `frame_data` to the
+backend, where POS or morphology processing runs server-side.
 
-Current algorithm:
+Utility algorithm in that module:
 
 1. validate frame count and scan duration
 2. upsample to 10 Hz
@@ -200,18 +204,14 @@ Current algorithm:
 
 `CameraCapture` returns:
 
-- `hr_bpm`
-- `hrv_ms`
-- `respiratory_rate`
 - `quality`
 - `quality_score`
 - `frame_data`
-- `rppg_quality`
 - `frame_r_mean`
 - `frame_g_mean`
 - `frame_b_mean`
 
-Note that `frame_data` is retained locally today and not sent in the main path.
+`ScanScreen` submits `frame_data` in the main path today.
 
 ## Voice Pipeline
 
