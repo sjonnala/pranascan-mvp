@@ -37,9 +37,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode='after')
     def validate_production_security(self):
-        if self.environment not in ("development", "test"):
-            if self.internal_service_token == "dev-internal-service-token":
-                raise ValueError("Must override internal_service_token in non-dev environments")
+        if self.environment not in ("development", "test") and self.internal_service_token == "dev-internal-service-token":
+            raise ValueError("Must override internal_service_token in non-dev environments")
         return self
 
 

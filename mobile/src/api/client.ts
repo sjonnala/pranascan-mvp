@@ -57,7 +57,7 @@ export function configureCoreAccessToken(accessToken: string | null): void {
 
 let onTokenRefresh: (() => Promise<string | null>) | null = null;
 let isRefreshing = false;
-let failedQueue: { resolve: (value: string | null) => void; reject: (reason?: any) => void }[] = [];
+let failedQueue: { resolve: (value: string | null) => void; reject: (reason?: unknown) => void }[] = [];
 
 const processQueue = (error: Error | null, token: string | null = null) => {
   failedQueue.forEach((prom) => {

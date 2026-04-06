@@ -6,10 +6,12 @@ from collections.abc import Sequence
 
 from app.services.rppg_processor import (
     FrameSample,
-    RppgBvpSignal as PosBvpSignal,
     RppgResult,
     extract_bvp,
     process_frames,
+)
+from app.services.rppg_processor import (
+    RppgBvpSignal as PosBvpSignal,
 )
 
 

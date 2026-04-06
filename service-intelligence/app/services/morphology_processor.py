@@ -183,7 +183,7 @@ def _average_cycle(
     cycles: list[np.ndarray] = []
     target_points = 200
 
-    for start_index, end_index in zip(peaks[:-1], peaks[1:]):
+    for start_index, end_index in zip(peaks[:-1], peaks[1:], strict=False):
         segment = pulse[start_index:end_index + 1]
         if len(segment) < 10:
             continue
