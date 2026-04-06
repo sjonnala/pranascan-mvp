@@ -75,6 +75,8 @@
     "printWidth": 100
   },
   "overrides": {
-    "react-test-renderer": "19.1.0"
+    "react-test-renderer": "19.1.0",
+    "react-dom": "19.1.0",
+    "scheduler": "0.26.0"
   }
 }
