@@ -76,7 +76,7 @@ public class ScanResult extends AuditableEntity {
     @Column(name = "audio_snr_db")
     private Double audioSnrDb;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(
             schema = "core",
             name = "scan_result_flags",
@@ -86,7 +86,7 @@ public class ScanResult extends AuditableEntity {
     @Column(name = "flag", nullable = false, length = 64)
     private List<String> flags = new ArrayList<>();
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(
             schema = "core",
             name = "scan_result_warnings",

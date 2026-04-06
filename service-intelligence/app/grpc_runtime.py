@@ -152,9 +152,21 @@ async def start_grpc_server(bind_address: str | None = None) -> grpc.aio.Server:
         server,
     )
 
-    bound_port = server.add_insecure_port(bind_address or build_grpc_bind_address())
+    address = bind_address or build_grpc_bind_address()
+    if settings.environment in ("development", "test"):
+        bound_port = server.add_insecure_port(address)
+    else:
+        if not settings.grpc_ssl_key_path or not settings.grpc_ssl_cert_path:
+            raise RuntimeError("gRPC TLS certificates must be provided in non-dev environments.")
+        with open(settings.grpc_ssl_key_path, "rb") as f:
+            private_key = f.read()
+        with open(settings.grpc_ssl_cert_path, "rb") as f:
+            certificate_chain = f.read()
+        server_credentials = grpc.ssl_server_credentials([(private_key, certificate_chain)])
+        bound_port = server.add_secure_port(address, server_credentials)
+
     if bound_port == 0:
-        raise RuntimeError("Failed to bind gRPC server to the configured address.")
+        raise RuntimeError(f"Failed to bind gRPC server to the configured address: {address}")
 
     await server.start()
     return server

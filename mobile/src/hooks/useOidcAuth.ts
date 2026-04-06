@@ -1,7 +1,7 @@
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { configureCoreAccessToken, getCurrentUserProfile } from '../api/client';
+import { configureCoreAccessToken, getCurrentUserProfile, setupAuthInterceptor } from '../api/client';
 import {
   clearStoredCoreAuthSession,
   loadStoredCoreAuthSession,
@@ -153,6 +153,52 @@ export function useOidcAuth(): UseOidcAuthReturn {
 
     await hydrateAuthenticatedSession(tokenResponse, storedUser);
   }, [clearLocalSession, discovery, hydrateAuthenticatedSession]);
+
+  const handleSilentRefresh = useCallback(async () => {
+    const [storedSession, storedUser] = await Promise.all([
+      loadStoredCoreAuthSession(),
+      loadStoredCoreUserProfile(),
+    ]);
+
+    if (!storedSession || !discovery?.tokenEndpoint) {
+      await clearLocalSession();
+      setStatus('signed_out');
+      return null;
+    }
+
+    const tokenResponse = toTokenResponse(storedSession);
+    if (!tokenResponse.refreshToken) {
+      await clearLocalSession();
+      setStatus('signed_out');
+      return null;
+    }
+
+    try {
+      const refreshedResponse = await AuthSession.refreshAsync(
+        {
+          clientId: OIDC_CLIENT_ID,
+          refreshToken: tokenResponse.refreshToken,
+          scopes: OIDC_SCOPES,
+          extraParams: buildAuthExtraParams(),
+        },
+        discovery
+      );
+
+      configureCoreAccessToken(refreshedResponse.accessToken);
+      if (storedUser) {
+        await persistCoreAuthSession(refreshedResponse, storedUser);
+      }
+      return refreshedResponse.accessToken;
+    } catch {
+      await clearLocalSession();
+      setStatus('signed_out');
+      return null;
+    }
+  }, [clearLocalSession, discovery]);
+
+  useEffect(() => {
+    setupAuthInterceptor(handleSilentRefresh);
+  }, [handleSilentRefresh]);
 
   useEffect(() => {
     let cancelled = false;

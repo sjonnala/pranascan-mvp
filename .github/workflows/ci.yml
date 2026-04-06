@@ -95,3 +95,18 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
       - run: npm test -- --coverage --watchAll=false
+
+  service-core-test:
+    name: Service Core — Maven
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: service-core
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: "maven"
+      - run: mvn -B verify

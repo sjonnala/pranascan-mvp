@@ -32,18 +32,48 @@ public class AuthenticatedUserService {
         String phone = normalize(jwt.getClaimAsString("phone_number"));
         String avatarUrl = normalize(jwt.getClaimAsString("picture"));
 
-        User user = userRepository.findByOidcSubject(subject)
-                .orElseGet(() -> new User(subject, email, displayName, phone));
+        User user = userRepository.findByOidcSubject(subject).orElse(null);
+        boolean dirty = false;
 
-        user.setOidcSubject(subject);
-        user.setEmail(email);
-        user.setDisplayName(displayName);
-        user.setPhoneE164(phone);
-        user.setAvatarUrl(avatarUrl);
-        user.activate();
-        user.recordLogin(Instant.now());
+        if (user == null) {
+            user = new User(subject, email, displayName, phone);
+            dirty = true;
+        }
 
-        return userRepository.save(user);
+        // User attributes might change in Keycloak
+        if (!java.util.Objects.equals(user.getOidcSubject(), subject)) {
+            user.setOidcSubject(subject);
+            dirty = true;
+        }
+        if (!java.util.Objects.equals(user.getEmail(), email)) {
+            user.setEmail(email);
+            dirty = true;
+        }
+        if (!java.util.Objects.equals(user.getDisplayName(), displayName)) {
+            user.setDisplayName(displayName);
+            dirty = true;
+        }
+        if (!java.util.Objects.equals(user.getPhoneE164(), phone)) {
+            user.setPhoneE164(phone);
+            dirty = true;
+        }
+        if (!java.util.Objects.equals(user.getAvatarUrl(), avatarUrl)) {
+            user.setAvatarUrl(avatarUrl);
+            dirty = true;
+        }
+        if (!user.isActive()) {
+            user.activate();
+            dirty = true;
+        }
+
+        // Throttle lastLoginAt updates to once per hour to prevent constant db writes
+        Instant now = Instant.now();
+        if (user.getLastLoginAt() == null || user.getLastLoginAt().isBefore(now.minusSeconds(3600))) {
+            user.recordLogin(now);
+            dirty = true;
+        }
+
+        return dirty ? userRepository.save(user) : user;
     }
 
     @Transactional(readOnly = true)

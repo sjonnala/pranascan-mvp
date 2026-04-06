@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.schemas.scan import ScanResultSubmit
+from app.schemas.scan import ScanResultSubmit, ScanType
 from app.services.anemia_screen import screen_anemia
 from app.services.morphology_processor import process_morphology_frames
 from app.services.quality_gate import run_quality_gate
@@ -48,7 +48,7 @@ def evaluate_scan_submission(
         processed_submission.hrv_ms,
     )
     anemia = None
-    if submission.scan_type == "standard":
+    if submission.scan_type == ScanType.STANDARD:
         anemia = screen_anemia(
             r_mean=processed_submission.frame_r_mean,
             g_mean=processed_submission.frame_g_mean,
@@ -81,7 +81,7 @@ def _apply_server_side_rppg(
         return submission, rppg_flags, None
 
     frames = build_frame_samples([frame.model_dump() for frame in submission.frame_data])
-    if submission.scan_type == "deep_dive":
+    if submission.scan_type == ScanType.DEEP_DIVE:
         morphology = process_morphology_frames(frames, submission.user_height_cm)
         rppg_flags = morphology.flags
         if morphology.hr_bpm is None:

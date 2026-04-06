@@ -55,6 +55,72 @@ export function configureCoreAccessToken(accessToken: string | null): void {
   coreAccessToken = accessToken?.trim() ? accessToken.trim() : null;
 }
 
+let onTokenRefresh: (() => Promise<string | null>) | null = null;
+let isRefreshing = false;
+let failedQueue: { resolve: (value: string | null) => void; reject: (reason?: any) => void }[] = [];
+
+const processQueue = (error: Error | null, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+export function setupAuthInterceptor(refreshCallback: () => Promise<string | null>) {
+  onTokenRefresh = refreshCallback;
+}
+
+coreHttp.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+      if (isRefreshing) {
+        return new Promise<string | null>((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            if (token) {
+              originalRequest.headers.Authorization = `Bearer ${token}`;
+            }
+            return coreHttp(originalRequest);
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      if (!onTokenRefresh) {
+        isRefreshing = false;
+        return Promise.reject(error);
+      }
+
+      try {
+        const token = await onTokenRefresh();
+        if (token) {
+          processQueue(null, token);
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return coreHttp(originalRequest);
+        } else {
+          processQueue(new Error('Refresh failed'));
+          return Promise.reject(error);
+        }
+      } catch (err) {
+        processQueue(err as Error);
+        return Promise.reject(err);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 export async function getCurrentUserProfile(): Promise<CoreUserProfile> {

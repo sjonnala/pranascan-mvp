@@ -15,11 +15,29 @@ public class IntelligenceServiceConfig {
             Metadata.Key.of("x-internal-service-token", Metadata.ASCII_STRING_MARSHALLER);
 
     @Bean(destroyMethod = "shutdown")
-    ManagedChannel intelligenceGrpcChannel(IntelligenceServiceProperties properties) {
-        return ManagedChannelBuilder
-                .forAddress(properties.grpcHost(), properties.grpcPort())
-                .usePlaintext()
-                .build();
+    ManagedChannel intelligenceGrpcChannel(IntelligenceServiceProperties properties, org.springframework.core.env.Environment env) {
+        boolean isDevOrTest = false;
+        for (String profile : env.getActiveProfiles()) {
+            if ("dev".equals(profile) || "test".equals(profile)) {
+                isDevOrTest = true;
+                break;
+            }
+        }
+
+        if (!isDevOrTest && "dev-internal-service-token".equals(properties.internalToken())) {
+            throw new IllegalStateException("Must override APP_INTELLIGENCE_INTERNAL_TOKEN in non-dev environments");
+        }
+
+        ManagedChannelBuilder<?> builder = ManagedChannelBuilder
+                .forAddress(properties.grpcHost(), properties.grpcPort());
+
+        if (isDevOrTest) {
+            builder.usePlaintext();
+        } else {
+            builder.useTransportSecurity();
+        }
+
+        return builder.build();
     }
 
     @Bean

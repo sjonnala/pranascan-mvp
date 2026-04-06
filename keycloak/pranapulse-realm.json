@@ -3,13 +3,13 @@
   "realm": "pranapulse",
   "displayName": "PranaPulse",
   "enabled": true,
-  "sslRequired": "none",
+  "sslRequired": "external",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": false,
   "editUsernameAllowed": false,
-  "bruteForceProtected": false,
+  "bruteForceProtected": true,
   "accessTokenLifespan": 300,
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 36000,
@@ -68,23 +68,6 @@
       ]
     }
   ],
-  "users": [
-    {
-      "username": "testuser",
-      "email": "testuser@pranapulse.dev",
-      "firstName": "Test",
-      "lastName": "User",
-      "enabled": true,
-      "emailVerified": true,
-      "credentials": [
-        {
-          "type": "password",
-          "value": "testpassword",
-          "temporary": false
-        }
-      ],
-      "realmRoles": ["user"]
-    }
-  ]
+  "users": []
 }
 

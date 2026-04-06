@@ -29,16 +29,18 @@ public class TrendAnalysisService {
 
     public String computeTrendAlert(UUID userId, ScanEvaluationOutcome outcome) {
         Instant now = Instant.now();
-        List<ScanResult> allResults = scanResultRepository.findByUser_IdOrderByCreatedAtAsc(userId);
-
         Instant cooldownCutoff = now.minus(trendProperties.cooldownHours(), ChronoUnit.HOURS);
+        Instant baselineCutoff = now.minus(trendProperties.lookbackDays(), ChronoUnit.DAYS);
+        Instant queryCutoff = cooldownCutoff.isBefore(baselineCutoff) ? cooldownCutoff : baselineCutoff;
+
+        List<ScanResult> allResults = scanResultRepository.findByUser_IdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(userId, queryCutoff);
+
         boolean onCooldown = allResults.stream()
                 .anyMatch(result -> result.getTrendAlert() != null && !result.getCreatedAt().isBefore(cooldownCutoff));
         if (onCooldown) {
             return null;
         }
 
-        Instant baselineCutoff = now.minus(trendProperties.lookbackDays(), ChronoUnit.DAYS);
         List<ScanResult> baselineWindow = allResults.stream()
                 .filter(result -> !result.getCreatedAt().isBefore(baselineCutoff))
                 .toList();
