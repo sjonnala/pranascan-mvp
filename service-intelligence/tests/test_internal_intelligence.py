@@ -118,34 +118,31 @@ async def test_scan_evaluation_supports_deep_dive_contact_ppg():
             scan_intelligence_pb2.FrameSample(
                 t_ms=float(index * (1000 / 60.0)),
                 r_mean=190.0
-                + 20.0 * math.exp(
-                    -0.5
-                    * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.16) / 0.05) ** 2
+                + 20.0
+                * math.exp(
+                    -0.5 * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.16) / 0.05) ** 2
                 )
                 + 9.0
                 * math.exp(
-                    -0.5
-                    * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.43) / 0.07) ** 2
+                    -0.5 * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.43) / 0.07) ** 2
                 ),
                 g_mean=190.0
-                + 20.0 * math.exp(
-                    -0.5
-                    * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.16) / 0.05) ** 2
+                + 20.0
+                * math.exp(
+                    -0.5 * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.16) / 0.05) ** 2
                 )
                 + 9.0
                 * math.exp(
-                    -0.5
-                    * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.43) / 0.07) ** 2
+                    -0.5 * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.43) / 0.07) ** 2
                 ),
                 b_mean=190.0
-                + 20.0 * math.exp(
-                    -0.5
-                    * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.16) / 0.05) ** 2
+                + 20.0
+                * math.exp(
+                    -0.5 * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.16) / 0.05) ** 2
                 )
                 + 9.0
                 * math.exp(
-                    -0.5
-                    * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.43) / 0.07) ** 2
+                    -0.5 * ((((index / 60.0) % beat_period_s) / beat_period_s - 0.43) / 0.07) ** 2
                 ),
             )
             for index in range(60 * 30)

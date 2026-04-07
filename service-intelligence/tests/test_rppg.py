@@ -36,9 +36,18 @@ def _make_signal(
     pulse = np.sin(2.0 * math.pi * freq_hz * t)
     illumination_drift = 0.25 * np.sin(2.0 * math.pi * 0.08 * t)
 
-    red = 96.0 + amplitudes[0] * pulse + illumination_drift + rng.normal(0.0, noise_std, sample_count)
-    green = 112.0 + amplitudes[1] * pulse + illumination_drift + rng.normal(0.0, noise_std, sample_count)
-    blue = 82.0 + amplitudes[2] * pulse + illumination_drift + rng.normal(0.0, noise_std, sample_count)
+    red = (
+        96.0 + amplitudes[0] * pulse + illumination_drift + rng.normal(0.0, noise_std, sample_count)
+    )
+    green = (
+        112.0
+        + amplitudes[1] * pulse
+        + illumination_drift
+        + rng.normal(0.0, noise_std, sample_count)
+    )
+    blue = (
+        82.0 + amplitudes[2] * pulse + illumination_drift + rng.normal(0.0, noise_std, sample_count)
+    )
 
     return [
         FrameSample(
@@ -132,7 +141,7 @@ def test_high_noise_does_not_crash():
 def test_high_noise_degrades_quality():
     clean = process_frames(_make_signal(hr_bpm=72.0, noise_std=0.05))
     noisy = process_frames(_make_signal(hr_bpm=72.0, noise_std=1.2))
-    # It should degrade, but white noise can accidentally leak into the passband. 
+    # It should degrade, but white noise can accidentally leak into the passband.
     # Just verify that the clean quality is very high.
     #
     # And noisy is lower than clean generically.

@@ -1,6 +1,5 @@
 """Tests for the skin tone calibration module (D5 — Fitzpatrick Types 1–6)."""
 
-
 import pytest
 
 from app.services.rppg_processor import FrameSample, RppgResult
@@ -63,9 +62,9 @@ _TYPE_RGB: dict[FitzpatrickType, tuple[int, int, int]] = {
     FitzpatrickType.TYPE_1: (255, 220, 195),  # very fair
     FitzpatrickType.TYPE_2: (240, 200, 170),  # fair
     FitzpatrickType.TYPE_3: (210, 170, 135),  # medium
-    FitzpatrickType.TYPE_4: (175, 130, 95),   # olive
-    FitzpatrickType.TYPE_5: (120, 80, 55),    # brown
-    FitzpatrickType.TYPE_6: (65, 40, 28),     # deep
+    FitzpatrickType.TYPE_4: (175, 130, 95),  # olive
+    FitzpatrickType.TYPE_5: (120, 80, 55),  # brown
+    FitzpatrickType.TYPE_6: (65, 40, 28),  # deep
 }
 
 
@@ -76,9 +75,9 @@ def test_estimate_fitzpatrick_type_correct_type_or_adjacent(ftype, rgb):
     ITA boundaries have natural uncertainty with synthetic RGB values.
     """
     estimated, ita = estimate_fitzpatrick_type(*rgb)
-    assert abs(estimated.value - ftype.value) <= 1, (
-        f"Expected {ftype.value} ±1, got {estimated.value} (ITA={ita:.1f})"
-    )
+    assert (
+        abs(estimated.value - ftype.value) <= 1
+    ), f"Expected {ftype.value} ±1, got {estimated.value} (ITA={ita:.1f})"
 
 
 def test_estimate_returns_ita_angle():
@@ -204,7 +203,10 @@ def test_calibration_preserves_existing_flags():
     """Existing rPPG flags should be retained after calibration."""
     frames = _make_frames(200, 160, 130)
     result = RppgResult(
-        hr_bpm=72.0, hrv_ms=45.0, respiratory_rate=16.0, quality_score=0.8,
+        hr_bpm=72.0,
+        hrv_ms=45.0,
+        respiratory_rate=16.0,
+        quality_score=0.8,
         flags=["low_framerate_upsampled"],
     )
     calibrated, _ = apply_skin_tone_calibration(result, frames)

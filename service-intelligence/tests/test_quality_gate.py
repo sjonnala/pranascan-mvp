@@ -210,9 +210,7 @@ def test_multiple_warnings_all_pass():
 def test_warning_and_error_together_rejects():
     """One warning + one error → scan rejected (error wins)."""
     borderline_lighting = _in_warning(settings.min_lighting_score, _LIGHTING_WARNING_DELTA)
-    result = run_quality_gate(
-        _make({"lighting_score": borderline_lighting, "motion_score": 0.80})
-    )
+    result = run_quality_gate(_make({"lighting_score": borderline_lighting, "motion_score": 0.80}))
     assert result.passed is False
     assert "borderline_lighting" in result.flags
     assert "motion_detected" in result.flags
