@@ -154,6 +154,27 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
     )
 
 
+def _detrend_linear(data: np.ndarray) -> np.ndarray:
+    """Stable linear detrending that avoids lapack division by zero bugs on synthetic signals."""
+    N = data.shape[0]
+    x_centered = np.arange(N, dtype=np.float64) - (N - 1) / 2.0
+    sum_x2 = np.sum(x_centered ** 2)
+    
+    detrended = np.zeros_like(data)
+    if data.ndim == 1:
+        slope = np.sum(x_centered * data) / sum_x2
+        trend = slope * x_centered + np.mean(data)
+        return data - trend
+        
+    for i in range(data.shape[1]):
+        y = data[:, i]
+        y_mean = np.mean(y)
+        slope = np.sum(x_centered * (y - y_mean)) / sum_x2
+        trend = slope * x_centered + y_mean
+        detrended[:, i] = y - trend
+        
+    return detrended
+
 def extract_bvp(frames: Sequence[FrameSample]) -> RppgBvpSignal:
     """Project a regularised RGB trace into a POS-derived BVP waveform."""
     flags: list[str] = []
@@ -178,7 +199,7 @@ def extract_bvp(frames: Sequence[FrameSample]) -> RppgBvpSignal:
     if float(np.max(np.std(regular_rgb, axis=0))) < 1e-3:
         raise ValueError("flat_signal")
 
-    detrended_rgb = signal.detrend(regular_rgb, axis=0)
+    detrended_rgb = _detrend_linear(regular_rgb)
 
     bvp = _extract_pos_waveform(detrended_rgb)
     bvp_std = float(np.std(bvp))
@@ -254,7 +275,7 @@ def _extract_pos_waveform(rgb: np.ndarray) -> np.ndarray:
     s2_std = float(np.std(s2))
     alpha = float(np.std(s1) / s2_std) if s2_std > 1e-6 else 0.0
 
-    return signal.detrend(s1 + alpha * s2)
+    return _detrend_linear(s1 + alpha * s2)
 
 
 def _bandpass_signal(
