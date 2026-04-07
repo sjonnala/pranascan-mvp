@@ -34,7 +34,10 @@ describe('api client auth wiring', () => {
     requestLog = [];
 
     const httpInstance = {
-      interceptors: { request: { use: jest.fn(), eject: jest.fn(), clear: jest.fn() } },
+      interceptors: {
+        request: { use: jest.fn(), eject: jest.fn(), clear: jest.fn() },
+        response: { use: jest.fn(), eject: jest.fn() },
+      },
       post: jest.fn(async (url: string, data?: unknown, config: Record<string, unknown> = {}) => {
         const finalConfig = await applyRequestInterceptors({ ...config, url, method: 'post', data });
 

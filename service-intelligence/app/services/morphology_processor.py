@@ -184,7 +184,7 @@ def _average_cycle(
     target_points = 200
 
     for start_index, end_index in zip(peaks[:-1], peaks[1:], strict=False):
-        segment = pulse[start_index:end_index + 1]
+        segment = pulse[start_index : end_index + 1]
         if len(segment) < 10:
             continue
 
@@ -197,7 +197,9 @@ def _average_cycle(
 
     average_cycle = np.mean(np.vstack(cycles), axis=0)
     mean_cycle_seconds = float(np.mean(np.diff(peaks))) / sample_rate_hz
-    cycle_fs = target_points / mean_cycle_seconds if mean_cycle_seconds > 1e-6 else float(target_points)
+    cycle_fs = (
+        target_points / mean_cycle_seconds if mean_cycle_seconds > 1e-6 else float(target_points)
+    )
     return average_cycle, cycle_fs
 
 
@@ -206,7 +208,9 @@ def _compute_stiffness_index(
     cycle_fs: float,
     user_height_cm: float,
 ) -> float | None:
-    window_length = min(len(average_cycle) - 1 if len(average_cycle) % 2 == 0 else len(average_cycle), 21)
+    window_length = min(
+        len(average_cycle) - 1 if len(average_cycle) % 2 == 0 else len(average_cycle), 21
+    )
     if window_length < 7:
         return None
     if window_length % 2 == 0:

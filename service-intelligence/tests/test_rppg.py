@@ -130,9 +130,13 @@ def test_high_noise_does_not_crash():
 
 
 def test_high_noise_degrades_quality():
-    clean = process_frames(_make_signal(hr_bpm=72.0, noise_std=0.05))
-    noisy = process_frames(_make_signal(hr_bpm=72.0, noise_std=1.2))
-    assert noisy.quality_score <= clean.quality_score + 0.1
+    clean = process_frames(_make_signal(hr_bpm=72.0, noise_std=0.01))
+    noisy = process_frames(_make_signal(hr_bpm=72.0, noise_std=1.5))
+    # It should degrade, but white noise can accidentally leak into the passband. 
+    # Just verify that the clean quality is very high.
+    assert clean.quality_score >= 0.8
+    # And noisy is lower than clean generically.
+    assert noisy.quality_score < clean.quality_score
 
 
 def test_empty_frames_returns_insufficient_frames():
