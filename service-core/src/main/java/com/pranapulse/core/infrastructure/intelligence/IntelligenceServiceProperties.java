@@ -1,14 +1,12 @@
 package com.pranapulse.core.infrastructure.intelligence;
 
-import java.util.Objects;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "app.intelligence")
 public record IntelligenceServiceProperties(
         String internalToken,
         String grpcHost,
-        int grpcPort
-) {
+        int grpcPort) {
 
     public IntelligenceServiceProperties {
         if (internalToken == null || internalToken.isBlank()) {

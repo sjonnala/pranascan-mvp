@@ -60,15 +60,19 @@ public class HealthResultLifecycleGrpcService extends HealthResultLifecycleServi
                 .setRecordedAt(toTimestamp(state.recordedAt()))
                 .setEffectiveAt(toTimestamp(state.effectiveAt()));
 
-        if (state instanceof ResultPending pending) {
-            builder.setExpiresAt(toTimestamp(pending.expiresAt()));
-        } else if (state instanceof ResultVerified verified) {
-            builder.setVerifiedAt(toTimestamp(verified.verifiedAt()));
-            builder.setVerifiedBy(verified.verifiedBy());
-        } else if (state instanceof ResultExpired expired) {
-            builder.setExpiresAt(toTimestamp(expired.expiryDeadline()));
-            builder.setExpiredAt(toTimestamp(expired.expiredAt()));
-            builder.setExpirationReason(expired.reason());
+        switch (state) {
+            case ResultPending pending ->
+                    builder.setExpiresAt(toTimestamp(pending.expiresAt()));
+            case ResultVerified verified -> {
+                builder.setVerifiedAt(toTimestamp(verified.verifiedAt()));
+                builder.setVerifiedBy(verified.verifiedBy());
+            }
+            case ResultExpired expired -> {
+                builder.setExpiresAt(toTimestamp(expired.expiryDeadline()));
+                builder.setExpiredAt(toTimestamp(expired.expiredAt()));
+                builder.setExpirationReason(expired.reason());
+            }
+            default -> { /* no additional fields for unknown subtypes */ }
         }
 
         return builder.build();

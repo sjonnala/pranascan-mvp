@@ -156,24 +156,25 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
 
 def _detrend_linear(data: np.ndarray) -> np.ndarray:
     """Stable linear detrending that avoids lapack division by zero bugs on synthetic signals."""
-    N = data.shape[0]
-    x_centered = np.arange(N, dtype=np.float64) - (N - 1) / 2.0
-    sum_x2 = np.sum(x_centered ** 2)
-    
+    n_samples = data.shape[0]
+    x_centered = np.arange(n_samples, dtype=np.float64) - (n_samples - 1) / 2.0
+    sum_x2 = np.sum(x_centered**2)
+
     detrended = np.zeros_like(data)
     if data.ndim == 1:
         slope = np.sum(x_centered * data) / sum_x2
         trend = slope * x_centered + np.mean(data)
         return data - trend
-        
+
     for i in range(data.shape[1]):
         y = data[:, i]
         y_mean = np.mean(y)
         slope = np.sum(x_centered * (y - y_mean)) / sum_x2
         trend = slope * x_centered + y_mean
         detrended[:, i] = y - trend
-        
+
     return detrended
+
 
 def extract_bvp(frames: Sequence[FrameSample]) -> RppgBvpSignal:
     """Project a regularised RGB trace into a POS-derived BVP waveform."""
@@ -193,9 +194,16 @@ def extract_bvp(frames: Sequence[FrameSample]) -> RppgBvpSignal:
     if regular_timestamps.size < MIN_FRAMES:
         raise ValueError("insufficient_frames")
 
-    regular_rgb = np.column_stack(
-        [np.interp(regular_timestamps, timestamps_s, rgb[:, index]) for index in range(3)]
-    )
+    if "low_framerate_upsampled" in flags:
+        from scipy.interpolate import CubicSpline
+
+        regular_rgb = np.column_stack(
+            [CubicSpline(timestamps_s, rgb[:, index])(regular_timestamps) for index in range(3)]
+        )
+    else:
+        regular_rgb = np.column_stack(
+            [np.interp(regular_timestamps, timestamps_s, rgb[:, index]) for index in range(3)]
+        )
     if float(np.max(np.std(regular_rgb, axis=0))) < 1e-3:
         raise ValueError("flat_signal")
 
@@ -324,13 +332,52 @@ def _dominant_frequency(
     low_hz: float,
     high_hz: float,
 ) -> float | None:
+    """Return the dominant *fundamental* cardiac frequency using sub-harmonic summation.
+
+    Plain periodogram peak-picking often locks onto the 2nd or 3rd harmonic of
+    the true cardiac frequency, especially after POS projection on low-frame-
+    rate upsampled traces.  Sub-harmonic summation weights each candidate
+    frequency by the sum of power at its first few harmonics so that the true
+    fundamental scores higher than any single harmonic peak.
+    """
     frequencies, power = signal.periodogram(trace, fs=sample_rate_hz)
     mask = (frequencies >= low_hz) & (frequencies <= high_hz)
     if not np.any(mask):
         return None
 
+    masked_freqs = frequencies[mask]
     masked_power = power[mask]
     if masked_power.size == 0 or float(np.max(masked_power)) <= 0.0:
         return None
 
-    return float(frequencies[mask][int(np.argmax(masked_power))])
+    # Sub-harmonic summation: for each candidate fundamental f, accumulate
+    # the spectral power at f, 2f, 3f (where they exist within the Nyquist
+    # limit).  This gives the true fundamental a scoring boost because its
+    # harmonics contribute, while a harmonic's "harmonics" fall outside the
+    # cardiac band or are much weaker.
+    #
+    # We weight each harmonic by 1/h so the fundamental power dominates the
+    # score.  Without this, SHS may prefer a sub-harmonic whose 2nd harmonic
+    # happens to coincide with the actual peak (e.g. choosing 50 BPM over
+    # 100 BPM because the 2nd harmonic of 50 is the 100 BPM peak).
+    n_harmonics = 3
+    shs_score = np.zeros_like(masked_power)
+    freq_resolution = float(frequencies[1] - frequencies[0]) if len(frequencies) > 1 else 1.0
+    max_power = float(np.max(masked_power))
+
+    for idx, f0 in enumerate(masked_freqs):
+        # Require the candidate fundamental itself to have meaningful power;
+        # otherwise a low-power sub-harmonic can win just because its
+        # harmonics align with strong peaks.
+        if masked_power[idx] < max_power * 0.05:
+            continue
+        total = 0.0
+        for h in range(1, n_harmonics + 1):
+            harmonic_freq = f0 * h
+            # Find the nearest bin in the full frequency array
+            bin_idx = int(round(harmonic_freq / freq_resolution))
+            if 0 <= bin_idx < len(power):
+                total += power[bin_idx] / h
+        shs_score[idx] = total
+
+    return float(masked_freqs[int(np.argmax(shs_score))])

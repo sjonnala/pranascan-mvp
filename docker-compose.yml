@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    platform: linux/arm64
     restart: unless-stopped
     environment:
       POSTGRES_DB: pranascan
@@ -17,7 +18,8 @@ services:
       retries: 5
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.1
+    image: quay.io/keycloak/keycloak:24.0
+    platform: linux/arm64
     restart: unless-stopped
     command: start-dev --import-realm
     environment:
@@ -38,6 +40,7 @@ services:
     build:
       context: ./service-intelligence
       dockerfile: Dockerfile
+    platform: linux/arm64
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://pranascan:pranascan_dev_password@db:5432/pranascan
@@ -56,8 +59,10 @@ services:
     build:
       context: ./service-core
       dockerfile: Dockerfile
+    platform: linux/arm64
     restart: unless-stopped
     environment:
+      SPRING_PROFILES_ACTIVE: dev
       CORE_DB_URL: jdbc:postgresql://db:5432/pranascan?currentSchema=core
       CORE_DB_USERNAME: pranascan
       CORE_DB_PASSWORD: pranascan_dev_password

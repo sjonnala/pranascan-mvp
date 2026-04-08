@@ -44,9 +44,6 @@
       "redirectUris": [
         "pranascan://auth/callback"
       ],
-      "postLogoutRedirectUris": [
-        "pranascan://auth/callback"
-      ],
       "webOrigins": ["*"],
       "attributes": {
         "pkce.code.challenge.method": "S256",
