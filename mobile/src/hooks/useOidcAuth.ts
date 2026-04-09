@@ -18,7 +18,7 @@ const OIDC_ISSUER =
 const OIDC_CLIENT_ID = process.env.EXPO_PUBLIC_OIDC_CLIENT_ID ?? 'pranapulse-mobile';
 const OIDC_AUDIENCE = process.env.EXPO_PUBLIC_OIDC_AUDIENCE ?? 'pranapulse-core';
 const OIDC_SCOPES = (
-  process.env.EXPO_PUBLIC_OIDC_SCOPES ?? 'openid profile email offline_access'
+  process.env.EXPO_PUBLIC_OIDC_SCOPES ?? 'openid profile email'
 )
   .split(/\s+/)
   .filter(Boolean);
@@ -27,6 +27,7 @@ const REDIRECT_URI = AuthSession.makeRedirectUri({
   scheme: 'pranascan',
   path: 'auth/callback',
 });
+
 
 type AuthStatus = 'loading' | 'signed_out' | 'signed_in';
 
@@ -59,6 +60,7 @@ export function useOidcAuth(): UseOidcAuthReturn {
   const [user, setUser] = useState<CoreUserProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+
 
   const authRequestConfig = useMemo<AuthSession.AuthRequestConfig>(
     () => ({

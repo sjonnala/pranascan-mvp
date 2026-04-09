@@ -54,3 +54,6 @@ secrets/
 
 # Java
 target/
+metro_clean.log
+metro_sim.log
+*.log

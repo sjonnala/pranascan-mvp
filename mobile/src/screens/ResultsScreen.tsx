@@ -402,8 +402,12 @@ export function ResultsScreen({
       <PranaPulseReveal delay={10}>
         <View style={styles.heroSection}>
           <Text style={styles.heroEyebrow}>Trend Lab</Text>
-          <Text style={[styles.heroTitle, compactLayout && styles.heroTitleCompact]}>Your latest vitality read.</Text>
-          <Text style={styles.heroSubtitle}>{headerSummary}</Text>
+          <Text style={[styles.heroTitle, compactLayout && styles.heroTitleCompact]}>
+            Your body has been speaking.
+          </Text>
+          <Text style={styles.heroSubtitle}>
+            Here is what we've heard over the last week.
+          </Text>
         </View>
       </PranaPulseReveal>
 
@@ -440,6 +444,49 @@ export function ResultsScreen({
             <Text style={styles.trendAlertTitle}>Trend Notice</Text>
             <Text style={styles.trendAlertText}>
               Your recent wellness indicators shifted against your recent baseline. Consider a check-in with a qualified healthcare professional if the shift feels unusual for you.
+            </Text>
+          </View>
+        </PranaPulseReveal>
+      ) : null}
+
+      {/* ── Stitch-style narrative insight cards ── */}
+      <PranaPulseReveal delay={155}>
+        <View style={styles.insightCard}>
+          <View style={styles.insightCardHeader}>
+            <View style={styles.insightIconShell}>
+              <MaterialIcons color={pranaPulseTheme.colors.secondary} name="favorite" size={22} />
+            </View>
+            <View style={styles.insightCategoryChip}>
+              <Text style={styles.insightCategoryText}>HEART HEALTH</Text>
+            </View>
+          </View>
+          <Text style={[styles.insightHeadline, compactLayout && styles.insightHeadlineCompact]}>
+            {heroTrendTitle}
+          </Text>
+          <Text style={styles.insightSubtext}>
+            Quality score {qualityPct}%
+            {windowLabel ? ` · ${windowLabel}` : ''}
+          </Text>
+        </View>
+      </PranaPulseReveal>
+
+      {result.hrv_ms != null ? (
+        <PranaPulseReveal delay={175}>
+          <View style={[styles.insightCard, styles.insightCardSleep]}>
+            <View style={styles.insightCardHeader}>
+              <View style={[styles.insightIconShell, styles.insightIconSage]}>
+                <MaterialIcons color={pranaPulseTheme.colors.primary} name="bar-chart" size={22} />
+              </View>
+              <View style={[styles.insightCategoryChip, styles.insightCategoryChipSage]}>
+                <Text style={[styles.insightCategoryText, styles.insightCategoryTextSage]}>HRV RECOVERY</Text>
+              </View>
+            </View>
+            <Text style={[styles.insightHeadline, compactLayout && styles.insightHeadlineCompact]}>
+              {reflectionSummaryText}
+            </Text>
+            <Text style={styles.insightSubtext}>
+              HRV {result.hrv_ms != null ? `${formatMetricValue(result.hrv_ms)} ms` : 'N/A'}
+              {result.hr_bpm != null ? ` · HR ${formatMetricValue(result.hr_bpm)} bpm` : ''}
             </Text>
           </View>
         </PranaPulseReveal>
@@ -1233,5 +1280,69 @@ const styles = StyleSheet.create({
     fontFamily: pranaPulseTheme.fonts.extraBold,
     color: pranaPulseTheme.colors.onPrimary,
     fontSize: 16,
+  },
+
+  // ── Stitch Insight Cards ──
+  insightCard: {
+    borderRadius: pranaPulseTheme.radius.lg,
+    backgroundColor: pranaPulseTheme.colors.surfaceContainerLowest,
+    padding: 24,
+    gap: 14,
+    marginBottom: 14,
+    ...pranaPulseShadow,
+  },
+  insightCardSleep: {
+    backgroundColor: withAlpha(pranaPulseTheme.colors.primaryContainer, 0.22),
+  },
+  insightCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  insightIconShell: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.secondaryContainer, 0.72),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  insightIconSage: {
+    backgroundColor: withAlpha(pranaPulseTheme.colors.primaryContainer, 0.72),
+  },
+  insightCategoryChip: {
+    borderRadius: pranaPulseTheme.radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    backgroundColor: pranaPulseTheme.colors.surfaceContainerHigh,
+  },
+  insightCategoryChipSage: {
+    backgroundColor: withAlpha(pranaPulseTheme.colors.primaryContainer, 0.52),
+  },
+  insightCategoryText: {
+    fontFamily: pranaPulseTheme.fonts.bold,
+    color: pranaPulseTheme.colors.secondary,
+    fontSize: 10,
+    letterSpacing: 1.4,
+  },
+  insightCategoryTextSage: {
+    color: pranaPulseTheme.colors.primary,
+  },
+  insightHeadline: {
+    fontFamily: pranaPulseTheme.fonts.extraBold,
+    color: pranaPulseTheme.colors.onSurface,
+    fontSize: 26,
+    lineHeight: 33,
+    letterSpacing: -0.5,
+  },
+  insightHeadlineCompact: {
+    fontSize: 22,
+    lineHeight: 29,
+  },
+  insightSubtext: {
+    fontFamily: pranaPulseTheme.fonts.medium,
+    color: pranaPulseTheme.colors.onSurfaceVariant,
+    fontSize: 14,
+    lineHeight: 21,
   },
 });

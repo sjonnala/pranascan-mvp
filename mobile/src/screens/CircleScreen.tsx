@@ -286,13 +286,15 @@ export function CircleScreen({
             ))}
 
             <View style={styles.interactionCard}>
-              <MaterialIcons color={pranaPulseTheme.colors.tertiary} name="celebration" size={22} />
-              <Text style={styles.interactionTitle}>
-                {acceptedCount > 0 ? `${acceptedCount} active connections` : 'Start your circle'}
-              </Text>
+              <MaterialIcons color={pranaPulseTheme.colors.tertiary} name="celebration" size={26} />
+              <Text style={styles.interactionTitle}>Send a 'Nudge' of Love</Text>
               <TouchableOpacity onPress={onOpenResults}>
                 <Text style={styles.interactionLink}>
-                  {pendingCount > 0 ? `${pendingCount} pending invite${pendingCount > 1 ? 's' : ''}` : 'Open Trend Lab'}
+                  {pendingCount > 0
+                    ? `${pendingCount} pending invite${pendingCount > 1 ? 's' : ''}`
+                    : acceptedCount > 0
+                      ? `${acceptedCount} active connection${acceptedCount > 1 ? 's' : ''}`
+                      : 'Start your circle'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -534,19 +536,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   streakGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+    flexDirection: 'column',
+    gap: 10,
   },
   streakCard: {
-    flexBasis: '47%',
-    flexGrow: 1,
     borderRadius: pranaPulseTheme.radius.md,
     backgroundColor: pranaPulseTheme.colors.surfaceContainerLowest,
     padding: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 16,
     ...pranaPulseShadow,
   },
   streakIconShell: {
@@ -585,14 +584,13 @@ const styles = StyleSheet.create({
     color: pranaPulseTheme.colors.secondary,
   },
   interactionCard: {
-    flexBasis: '47%',
-    flexGrow: 1,
     borderRadius: pranaPulseTheme.radius.md,
-    backgroundColor: pranaPulseTheme.colors.surfaceContainerHigh,
-    padding: 18,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.tertiaryContainer, 0.46),
+    padding: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 10,
+    marginTop: 4,
   },
   interactionTitle: {
     fontFamily: pranaPulseTheme.fonts.bold,
@@ -713,8 +711,13 @@ const styles = StyleSheet.create({
   },
   feedAction: {
     fontFamily: pranaPulseTheme.fonts.bold,
-    color: pranaPulseTheme.colors.onSurfaceVariant,
+    color: pranaPulseTheme.colors.primary,
     fontSize: 14,
+    borderRadius: pranaPulseTheme.radius.full,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.primaryContainer, 0.52),
+    overflow: 'hidden',
   },
   feedHeadline: {
     fontFamily: pranaPulseTheme.fonts.bold,

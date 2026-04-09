@@ -42,13 +42,19 @@
       "fullScopeAllowed": true,
       "protocol": "openid-connect",
       "redirectUris": [
-        "pranascan://auth/callback"
+        "pranascan://auth/callback",
+        "pranascan://*",
+        "com.pranascan.app://auth/callback",
+        "com.pranascan.app://*",
+        "exp://*",
+        "http://localhost:*/*"
       ],
       "webOrigins": ["*"],
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "pranascan://auth/callback"
       },
+      "optionalClientScopes": ["offline_access"],
       "protocolMappers": [
         {
           "name": "service-core-audience",
@@ -65,6 +71,23 @@
       ]
     }
   ],
-  "users": []
+  "users": [
+    {
+      "username": "testuser",
+      "email": "testuser@pranascan.dev",
+      "firstName": "Test",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["user"]
+    }
+  ]
 }
 

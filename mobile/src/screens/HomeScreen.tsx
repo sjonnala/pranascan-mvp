@@ -23,29 +23,24 @@ function formatMetric(value: number | null | undefined, unit: string): string {
   if (value == null) {
     return `-- ${unit}`;
   }
-
   const fixed = Math.abs(value) >= 10 ? value.toFixed(0) : value.toFixed(1);
   return `${fixed} ${unit}`;
 }
 
 function takeFirstSentence(text: string | null | undefined, fallback: string): string {
-  if (!text?.trim()) {
-    return fallback;
-  }
-
+  if (!text?.trim()) return fallback;
   const sentence = text.split('. ')[0]?.trim();
   return sentence ? `${sentence.replace(/\.$/, '')}.` : fallback;
 }
 
 function describeDelta(value: number | null | undefined, unit: string, label: string): string | null {
-  if (value == null || value === 0) {
-    return null;
-  }
-
+  if (value == null || value === 0) return null;
   const amount = Math.abs(value);
   const formatted = amount >= 10 ? amount.toFixed(0) : amount.toFixed(1);
   return `${label} ${value > 0 ? 'up' : 'down'} ${formatted} ${unit}`;
 }
+
+const CAM_BG = '#1C2118';
 
 export function HomeScreen({
   displayName,
@@ -62,7 +57,6 @@ export function HomeScreen({
 
   useEffect(() => {
     let isMounted = true;
-
     (async () => {
       try {
         const [historyData, streakData, reportData] = await Promise.all([
@@ -70,11 +64,7 @@ export function HomeScreen({
           getCurrentVitalityStreak(),
           getLatestVitalityReport(),
         ]);
-
-        if (!isMounted) {
-          return;
-        }
-
+        if (!isMounted) return;
         setHistory(historyData);
         setStreak(streakData);
         setReport(reportData);
@@ -83,15 +73,10 @@ export function HomeScreen({
           setError('Home insights are temporarily unavailable. You can still start a Daily Glow scan.');
         }
       } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+        if (isMounted) setIsLoading(false);
       }
     })();
-
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, []);
 
   const latestResult = history?.items[0]?.result;
@@ -100,14 +85,13 @@ export function HomeScreen({
     return trimmed ? trimmed.split(/\s+/)[0] : 'there';
   }, [displayName]);
 
-  const heroSummary = takeFirstSentence(
-    report?.summary_text,
-    'Take a moment to align your rhythm before the day accelerates.'
-  );
   const trendTitle =
     describeDelta(report?.delta_hrv_ms ?? history?.items[0]?.hrv_trend_delta, 'ms', 'HRV') ??
     describeDelta(report?.delta_hr_bpm ?? history?.items[0]?.hr_trend_delta, 'bpm', 'Heart rate') ??
-    (report?.scan_count ? `${report.scan_count} scans in your current window` : `${formatMetric(latestResult?.hrv_ms, 'ms')} recovery rhythm`);
+    (report?.scan_count
+      ? `${report.scan_count} scans in your current window`
+      : `${formatMetric(latestResult?.hrv_ms, 'ms')} recovery rhythm`);
+
   const trendCopy = report?.summary_text?.trim()
     ? takeFirstSentence(report.summary_text, 'Review how your recent scans are moving together.')
     : history?.items[0]?.hrv_trend_delta != null
@@ -123,69 +107,58 @@ export function HomeScreen({
       onScanPress={onOpenScanModes}
       profileLabel={displayName ?? 'P'}
     >
+      {/* ── Section header row ── */}
       <PranaPulseReveal delay={10}>
-        <View style={styles.heroSection}>
-          <View style={styles.heroLabelRow}>
-            <Text style={styles.eyebrow}>Daily Glow</Text>
+        <View style={styles.sectionHeaderRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text style={styles.sectionTitle}>Daily Balance</Text>
             {isLoading ? <ActivityIndicator color={pranaPulseTheme.colors.primary} size="small" /> : null}
           </View>
-          <Text style={styles.heroTitle}>Morning Vitality</Text>
-          <Text style={styles.heroSubtitle}>{`Good to see you, ${firstName}. ${heroSummary}`}</Text>
-        </View>
-      </PranaPulseReveal>
-
-      <PranaPulseReveal delay={90}>
-        <View style={styles.viewfinderShell}>
-          <View style={styles.frameOutline} />
-          <View style={[styles.corner, styles.cornerTopLeft]} />
-          <View style={[styles.corner, styles.cornerTopRight]} />
-          <View style={[styles.corner, styles.cornerBottomLeft]} />
-          <View style={[styles.corner, styles.cornerBottomRight]} />
-
-          <View style={styles.viewfinderInner}>
-            <View style={styles.previewGlowSage} />
-            <View style={styles.previewGlowSunset} />
-
-            <View style={styles.previewBadgeRow}>
-              <Text style={styles.previewEyebrow}>30s video + voice</Text>
-              <View style={styles.previewBadge}>
-                <Text style={styles.previewBadgeText}>Warm / Soft-UI</Text>
-              </View>
-            </View>
-
-            <View style={styles.waveOrb}>
-              <View style={styles.waveRing} />
-              <View style={styles.waveStack}>
-                <View style={[styles.waveLine, styles.waveLineWide]} />
-                <View style={[styles.waveLine, styles.waveLineMid]} />
-                <View style={[styles.waveLine, styles.waveLineShort]} />
-              </View>
-              <Text style={styles.waveCount}>30s</Text>
-              <Text style={styles.waveState}>Aligning</Text>
-            </View>
-
-            <Text style={styles.previewCopy}>
-              Follow the ghost guide, breathe with the wave, and let Daily Glow capture your steady baseline.
-            </Text>
+          <View style={styles.scanModePill}>
+            <Text style={styles.scanModeText}>30s rPPG Scan</Text>
           </View>
         </View>
       </PranaPulseReveal>
 
-      <PranaPulseReveal delay={150}>
-        <View>
-          <TouchableOpacity onPress={onStartDailyGlow} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Start Daily Glow</Text>
-          </TouchableOpacity>
+      {/* ── Face scan viewfinder (tappable → launches live scan) ── */}
+      <PranaPulseReveal delay={70}>
+        <TouchableOpacity
+          activeOpacity={0.94}
+          onPress={onStartDailyGlow}
+          style={styles.viewfinderCard}
+          testID="home-face-scan-preview"
+        >
+          <View style={styles.cameraCanvas}>
+            {/* subtle ambient glows */}
+            <View style={styles.cameraGlowTop} />
+            <View style={styles.cameraGlowBottom} />
 
-          <TouchableOpacity onPress={onOpenScanModes} style={styles.secondaryLink}>
-            <Text style={styles.secondaryLinkText}>Explore scan modes</Text>
-          </TouchableOpacity>
-        </View>
+            {/* DETECTION ACTIVE badge */}
+            <View style={styles.detectionBadge}>
+              <View style={styles.detectionDot} />
+              <Text style={styles.detectionText}>DETECTION ACTIVE</Text>
+            </View>
+
+            {/* Face oval guide ring */}
+            <View pointerEvents="none" style={styles.faceOvalOuter}>
+              <View style={styles.faceOvalInner} />
+            </View>
+
+            {/* Begin Face Scan pill at bottom */}
+            <View style={styles.scanCtaRow}>
+              <View style={styles.scanCtaButton}>
+                <MaterialIcons color={pranaPulseTheme.colors.onPrimary} name="videocam" size={18} />
+                <Text style={styles.scanCtaText}>Begin Face Scan</Text>
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
       </PranaPulseReveal>
 
       {error ? <Text style={styles.inlineError}>{error}</Text> : null}
 
-      <PranaPulseReveal delay={230}>
+      {/* ── Metric chips ── */}
+      <PranaPulseReveal delay={160}>
         <View style={styles.metricGrid}>
           <View style={styles.metricCard}>
             <View style={styles.metricHeader}>
@@ -195,7 +168,7 @@ export function HomeScreen({
               <Text style={styles.metricEyebrow}>Resting HR</Text>
             </View>
             <Text style={styles.metricValue}>{formatMetric(latestResult?.hr_bpm, 'bpm')}</Text>
-            <Text style={styles.metricCopy}>Latest Daily Glow heart rhythm snapshot.</Text>
+            <Text style={styles.metricCopy}>Latest check-in heart rhythm.</Text>
           </View>
 
           <View style={styles.metricCard}>
@@ -211,12 +184,48 @@ export function HomeScreen({
         </View>
       </PranaPulseReveal>
 
-      <PranaPulseReveal delay={300}>
+      {/* ── Weekly Deep Dive section ── */}
+      <PranaPulseReveal delay={220}>
+        <View style={styles.deepDiveSectionRow}>
+          <Text style={styles.sectionTitle}>Weekly Deep Dive</Text>
+          <Text style={styles.deepDiveBadge}>Full Biomarker Sync</Text>
+        </View>
+
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={onOpenScanModes}
+          style={styles.deepDiveCard}
+          testID="home-deep-dive-card"
+        >
+          <View style={styles.deepDiveIconShell}>
+            <MaterialIcons color={pranaPulseTheme.colors.secondary} name="fingerprint" size={36} />
+          </View>
+          <Text style={styles.deepDiveTitle}>Contact-PPG Thumb Scan</Text>
+          <Text style={styles.deepDiveCopy}>
+            60-second thumb-press for pulse-wave morphology and stiffness index.
+          </Text>
+          <View style={styles.deepDiveChipRow}>
+            <View style={styles.deepDiveChip}>
+              <MaterialIcons color={pranaPulseTheme.colors.secondary} name="flash-on" size={12} />
+              <Text style={styles.deepDiveChipText}>Torch assist</Text>
+            </View>
+            <View style={styles.deepDiveChip}>
+              <MaterialIcons color={pranaPulseTheme.colors.primary} name="timeline" size={12} />
+              <Text style={styles.deepDiveChipText}>Morphology</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </PranaPulseReveal>
+
+      {/* ── Streak / Trend support cards ── */}
+      <PranaPulseReveal delay={290}>
         <View style={styles.supportStack}>
           <View style={[styles.supportCard, styles.supportCardSage]}>
             <Text style={styles.supportEyebrow}>Glow Streak</Text>
             <Text style={styles.supportTitle}>
-              {streak?.currentStreakDays != null ? `${streak.currentStreakDays} days in rhythm` : 'Start today'}
+              {streak?.currentStreakDays != null
+                ? `${streak.currentStreakDays} days in rhythm`
+                : 'Start today'}
             </Text>
             <Text style={styles.supportCopy}>
               {streak?.status === 'AT_RISK'
@@ -237,231 +246,133 @@ export function HomeScreen({
 }
 
 const styles = StyleSheet.create({
-  heroSection: {
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 18,
-  },
-  heroLabelRow: {
+  // ── Section headers ──
+  sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    marginBottom: 14,
   },
-  eyebrow: {
-    ...pranaPulseTheme.type.eyebrow,
-    color: pranaPulseTheme.colors.primary,
-  },
-  heroTitle: {
+  sectionTitle: {
     fontFamily: pranaPulseTheme.fonts.extraBold,
     color: pranaPulseTheme.colors.onSurface,
-    fontSize: 34,
-    letterSpacing: -0.9,
-    textAlign: 'center',
+    fontSize: 22,
+    letterSpacing: -0.4,
   },
-  heroSubtitle: {
-    ...pranaPulseTheme.type.body,
-    maxWidth: 320,
-    textAlign: 'center',
+  scanModePill: {
+    borderRadius: pranaPulseTheme.radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.primaryContainer, 0.62),
   },
-  viewfinderShell: {
-    position: 'relative',
-    width: '100%',
-    maxWidth: 332,
-    aspectRatio: 1,
-    alignSelf: 'center',
-    marginBottom: 26,
-    justifyContent: 'center',
-    alignItems: 'center',
+  scanModeText: {
+    fontFamily: pranaPulseTheme.fonts.bold,
+    color: pranaPulseTheme.colors.primary,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
-  frameOutline: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 30,
-    borderWidth: 3,
-    borderColor: withAlpha(pranaPulseTheme.colors.outlineVariant, 0.28),
-  },
-  corner: {
-    position: 'absolute',
-    width: 48,
-    height: 48,
-    borderColor: pranaPulseTheme.colors.primary,
-  },
-  cornerTopLeft: {
-    top: -2,
-    left: -2,
-    borderTopWidth: 3,
-    borderLeftWidth: 3,
-    borderTopLeftRadius: 30,
-  },
-  cornerTopRight: {
-    top: -2,
-    right: -2,
-    borderTopWidth: 3,
-    borderRightWidth: 3,
-    borderTopRightRadius: 30,
-  },
-  cornerBottomLeft: {
-    bottom: -2,
-    left: -2,
-    borderBottomWidth: 3,
-    borderLeftWidth: 3,
-    borderBottomLeftRadius: 30,
-  },
-  cornerBottomRight: {
-    bottom: -2,
-    right: -2,
-    borderBottomWidth: 3,
-    borderRightWidth: 3,
-    borderBottomRightRadius: 30,
-  },
-  viewfinderInner: {
-    width: '92%',
-    height: '92%',
-    borderRadius: pranaPulseTheme.radius.lg,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
+
+  // ── Face scan viewfinder ──
+  viewfinderCard: {
+    borderRadius: 28,
     overflow: 'hidden',
-    justifyContent: 'space-between',
-    backgroundColor: pranaPulseTheme.colors.surfaceContainer,
-  },
-  previewGlowSage: {
-    position: 'absolute',
-    top: 24,
-    left: -14,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: withAlpha(pranaPulseTheme.colors.primaryContainer, 0.58),
-  },
-  previewGlowSunset: {
-    position: 'absolute',
-    right: -26,
-    bottom: 20,
-    width: 176,
-    height: 176,
-    borderRadius: 88,
-    backgroundColor: withAlpha(pranaPulseTheme.colors.secondaryContainer, 0.64),
-  },
-  previewBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  previewEyebrow: {
-    fontFamily: pranaPulseTheme.fonts.bold,
-    color: pranaPulseTheme.colors.primary,
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  previewBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: pranaPulseTheme.radius.full,
-    backgroundColor: withAlpha(pranaPulseTheme.colors.surfaceContainerLowest, 0.82),
-  },
-  previewBadgeText: {
-    fontFamily: pranaPulseTheme.fonts.bold,
-    color: pranaPulseTheme.colors.onSurfaceVariant,
-    fontSize: 11,
-  },
-  waveOrb: {
-    alignSelf: 'center',
-    width: 188,
-    height: 188,
-    borderRadius: 94,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(pranaPulseTheme.colors.surfaceContainerLowest, 0.32),
-  },
-  waveRing: {
-    position: 'absolute',
-    width: 154,
-    height: 154,
-    borderRadius: 77,
-    borderWidth: 1,
-    borderColor: withAlpha(pranaPulseTheme.colors.primary, 0.18),
-  },
-  waveStack: {
-    position: 'absolute',
-    top: 52,
-    width: 120,
-    gap: 7,
-  },
-  waveLine: {
-    height: 3,
-    borderRadius: 999,
-    alignSelf: 'center',
-  },
-  waveLineWide: {
-    width: 88,
-    backgroundColor: withAlpha(pranaPulseTheme.colors.secondary, 0.78),
-  },
-  waveLineMid: {
-    width: 112,
-    backgroundColor: withAlpha(pranaPulseTheme.colors.primary, 0.7),
-  },
-  waveLineShort: {
-    width: 74,
-    backgroundColor: withAlpha(pranaPulseTheme.colors.secondary, 0.48),
-  },
-  waveCount: {
-    fontFamily: pranaPulseTheme.fonts.extraBold,
-    color: pranaPulseTheme.colors.onSurface,
-    fontSize: 38,
-    letterSpacing: -1,
-  },
-  waveState: {
-    fontFamily: pranaPulseTheme.fonts.bold,
-    marginTop: 4,
-    color: pranaPulseTheme.colors.primary,
-    fontSize: 11,
-    letterSpacing: 1.6,
-    textTransform: 'uppercase',
-  },
-  previewCopy: {
-    fontFamily: pranaPulseTheme.fonts.medium,
-    color: pranaPulseTheme.colors.onSurfaceVariant,
-    fontSize: 14,
-    lineHeight: 21,
-    textAlign: 'center',
-    maxWidth: 260,
-    alignSelf: 'center',
-  },
-  primaryButton: {
-    borderRadius: pranaPulseTheme.radius.full,
-    backgroundColor: pranaPulseTheme.colors.primary,
-    paddingVertical: 18,
-    alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 16,
     ...pranaPulseShadow,
   },
-  primaryButtonText: {
+  cameraCanvas: {
+    backgroundColor: CAM_BG,
+    height: 330,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  cameraGlowTop: {
+    position: 'absolute',
+    top: -20,
+    left: -20,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.primaryContainer, 0.16),
+  },
+  cameraGlowBottom: {
+    position: 'absolute',
+    bottom: -24,
+    right: -24,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.secondaryContainer, 0.12),
+  },
+  detectionBadge: {
+    position: 'absolute',
+    top: 14,
+    left: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: withAlpha('#000000', 0.42),
+    borderRadius: pranaPulseTheme.radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  detectionDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#4CAF50',
+  },
+  detectionText: {
+    fontFamily: pranaPulseTheme.fonts.bold,
+    color: '#FFFFFF',
+    fontSize: 10,
+    letterSpacing: 1.2,
+  },
+  faceOvalOuter: {
+    width: 200,
+    height: 248,
+    borderRadius: 124,
+    borderWidth: 2,
+    borderColor: withAlpha('#FFFFFF', 0.52),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  faceOvalInner: {
+    width: 182,
+    height: 230,
+    borderRadius: 115,
+    borderWidth: 1,
+    borderColor: withAlpha('#FFFFFF', 0.2),
+  },
+  scanCtaRow: {
+    position: 'absolute',
+    bottom: 18,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  scanCtaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: pranaPulseTheme.radius.full,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.primary, 0.9),
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+  },
+  scanCtaText: {
     fontFamily: pranaPulseTheme.fonts.extraBold,
     color: pranaPulseTheme.colors.onPrimary,
-    fontSize: 18,
-    letterSpacing: -0.2,
+    fontSize: 15,
+    letterSpacing: -0.1,
   },
-  secondaryLink: {
-    alignItems: 'center',
-    marginBottom: 18,
-  },
-  secondaryLinkText: {
-    fontFamily: pranaPulseTheme.fonts.bold,
-    color: pranaPulseTheme.colors.onSurfaceVariant,
-    fontSize: 13,
-  },
-  inlineError: {
-    color: pranaPulseTheme.colors.error,
-    fontSize: 13,
-    lineHeight: 20,
-    textAlign: 'center',
-    marginBottom: 18,
-  },
+
+  // ── Metric chips ──
   metricGrid: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   metricCard: {
     flex: 1,
@@ -499,16 +410,83 @@ const styles = StyleSheet.create({
   metricValue: {
     fontFamily: pranaPulseTheme.fonts.extraBold,
     color: pranaPulseTheme.colors.onSurface,
-    fontSize: 26,
-    marginBottom: 6,
+    fontSize: 24,
+    marginBottom: 4,
     letterSpacing: -0.6,
   },
   metricCopy: {
     fontFamily: pranaPulseTheme.fonts.medium,
     color: pranaPulseTheme.colors.onSurfaceVariant,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 18,
   },
+
+  // ── Weekly Deep Dive ──
+  deepDiveSectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  deepDiveBadge: {
+    fontFamily: pranaPulseTheme.fonts.bold,
+    color: pranaPulseTheme.colors.secondary,
+    fontSize: 11,
+    letterSpacing: 0.5,
+  },
+  deepDiveCard: {
+    borderRadius: pranaPulseTheme.radius.lg,
+    backgroundColor: pranaPulseTheme.colors.surfaceContainerLowest,
+    padding: 24,
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+    ...pranaPulseShadow,
+  },
+  deepDiveIconShell: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: withAlpha(pranaPulseTheme.colors.secondaryContainer, 0.52),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  deepDiveTitle: {
+    fontFamily: pranaPulseTheme.fonts.extraBold,
+    color: pranaPulseTheme.colors.onSurface,
+    fontSize: 17,
+    textAlign: 'center',
+  },
+  deepDiveCopy: {
+    fontFamily: pranaPulseTheme.fonts.medium,
+    color: pranaPulseTheme.colors.onSurfaceVariant,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    maxWidth: 270,
+  },
+  deepDiveChipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  deepDiveChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: pranaPulseTheme.radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: pranaPulseTheme.colors.surfaceContainer,
+  },
+  deepDiveChipText: {
+    fontFamily: pranaPulseTheme.fonts.bold,
+    color: pranaPulseTheme.colors.onSurfaceVariant,
+    fontSize: 11,
+  },
+
+  // ── Support cards ──
   supportStack: {
     gap: 12,
   },
@@ -540,5 +518,13 @@ const styles = StyleSheet.create({
     color: pranaPulseTheme.colors.onSurfaceVariant,
     fontSize: 14,
     lineHeight: 22,
+  },
+
+  inlineError: {
+    color: pranaPulseTheme.colors.error,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 14,
   },
 });

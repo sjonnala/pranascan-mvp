@@ -25,8 +25,12 @@ services:
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8083
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
     ports:
-      - "8081:8080"
+      - "8083:8080"
     volumes:
       - ./keycloak/pranapulse-realm.json:/opt/keycloak/data/import/pranapulse-realm.json:ro
     healthcheck:
@@ -69,7 +73,7 @@ services:
       APP_INTELLIGENCE_INTERNAL_TOKEN: ${APP_INTELLIGENCE_INTERNAL_TOKEN:-dev-internal-service-token}
       APP_INTELLIGENCE_GRPC_HOST: service-intelligence
       APP_INTELLIGENCE_GRPC_PORT: 50051
-      APP_SECURITY_ISSUER_URI: ${APP_SECURITY_ISSUER_URI:-http://keycloak:8080/realms/pranapulse}
+      APP_SECURITY_ISSUER_URI: ${APP_SECURITY_ISSUER_URI:-http://localhost:8083/realms/pranapulse}
       APP_SECURITY_JWK_SET_URI: ${APP_SECURITY_JWK_SET_URI:-http://keycloak:8080/realms/pranapulse/protocol/openid-connect/certs}
       APP_SECURITY_REQUIRED_AUDIENCE: ${APP_SECURITY_REQUIRED_AUDIENCE:-pranapulse-core}
     ports:

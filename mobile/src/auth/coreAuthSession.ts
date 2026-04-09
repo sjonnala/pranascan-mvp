@@ -3,8 +3,8 @@ import { TokenType } from 'expo-auth-session';
 import * as SecureStore from 'expo-secure-store';
 import { CoreUserProfile } from '../types';
 
-const CORE_AUTH_SESSION_KEY = '@pranascan:core_auth_session';
-const CORE_AUTH_USER_KEY = '@pranascan:core_auth_user';
+const CORE_AUTH_SESSION_KEY = 'pranascan_core_auth_session';
+const CORE_AUTH_USER_KEY = 'pranascan_core_auth_user';
 
 export interface StoredCoreAuthSession {
   accessToken: string;
