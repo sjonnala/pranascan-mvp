@@ -81,6 +81,7 @@ export function PranaPulseScaffold({
         {scroll ? (
           <ScrollView
             contentInsetAdjustmentBehavior="automatic"
+            style={{ flex: 1 }}
             contentContainerStyle={[
               styles.contentContainer,
               { maxWidth: contentMaxWidth, paddingHorizontal: contentHorizontalPadding },
