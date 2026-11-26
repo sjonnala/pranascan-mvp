@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import inspect
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -59,13 +60,43 @@ def compare_methods(frames: list[FrameSample]) -> dict[str, BaselineEstimate]:
         ),
         "pos": _estimate_signal(
             "pos",
-            rppg_processor._extract_pos_waveform(detrended_rgb),
+            pos_waveform(regular_rgb, sample_rate_hz),
             sample_rate_hz,
             flags,
         ),
         "ica": _estimate_ica_signal(detrended_relative_rgb, sample_rate_hz, flags),
     }
     return estimates
+
+
+def pos_waveform(regular_rgb: np.ndarray, sample_rate_hz: float) -> np.ndarray:
+    """POS pulse signal from the raw, uniformly resampled RGB trace.
+
+    POS normalises each channel by its own temporal mean (Wang et al. 2017), so it
+    must receive raw RGB. A linearly detrended trace has a near-zero mean, which
+    makes that division unstable. The output is detrended afterwards, matching the
+    production order in PR #1 (``_detrend_linear(_extract_pos_waveform(rgb, fs))``).
+
+    ``sample_rate_hz`` is forwarded when the production function accepts it (the
+    windowed POS in PR #1, ``sample_rate_hz=UPSAMPLE_TARGET_FS`` by default). The
+    current global POS takes ``rgb`` only, so the call stays compatible with both.
+    """
+    extract = rppg_processor._extract_pos_waveform
+    if _accepts_sample_rate(extract):
+        waveform = extract(regular_rgb, sample_rate_hz=sample_rate_hz)
+    else:
+        waveform = extract(regular_rgb)
+    return rppg_processor._detrend_linear(np.asarray(waveform, dtype=np.float64))
+
+
+def _accepts_sample_rate(function: object) -> bool:
+    try:
+        parameters = inspect.signature(function).parameters  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    if "sample_rate_hz" in parameters:
+        return True
+    return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values())
 
 
 def write_baseline_report(
