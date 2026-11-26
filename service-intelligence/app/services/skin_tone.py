@@ -1,19 +1,33 @@
 """
-Skin tone calibration for rPPG accuracy — Fitzpatrick Types 1–6.
+Skin tone estimation for rPPG logging and fairness metadata — Fitzpatrick Types 1–6.
 
 Overview
 --------
 Green-channel rPPG signal quality degrades for darker skin tones because
-melanin absorbs more green light, reducing pulsatile amplitude and SNR.
+melanin absorbs more visible light, reducing pulsatile *amplitude* and SNR.
 This module estimates the user's Fitzpatrick skin phototype from the
-per-frame RGB means captured during a scan, then applies a per-type
-calibration factor to the rPPG output.
+per-frame RGB means captured during a scan and attaches that estimate as
+logging / confidence metadata.
+
+Phase 0 change (budget-phone reliability audit)
+-----------------------------------------------
+Earlier versions multiplied HR and HRV by a per-type ``hr_factor``
+(0.970 for Type 5, 0.950 for Type 6). Heart rate is a *frequency*: melanin
+attenuates amplitude, not frequency, so no multiplicative correction is
+physically justified, and the cited source for the factors could not be
+found. In simulation the factor raised Type V–VI MAE from 3.6 to 6.1 BPM.
+ITA also tracks exposure (dim light on light skin reads as Type 5), so the
+factor fired on the wrong users too.
+
+HR, HRV and quality outputs are now strictly invariant to the estimated
+Fitzpatrick type. ITA and the type are kept only as metadata (flags and the
+``SkinToneCalibrationResult`` record) for logging and fairness evaluation.
 
 Algorithm
 ---------
 1. Average R, G, B across all frames to produce a representative skin colour.
 2. Convert sRGB → CIE L*a*b* (D65 illuminant) using the standard IEC 61966-2-1
-   linearisation and the Bradford-adapted D65 XYZ matrix.
+   linearisation and the D65 XYZ matrix.
 3. Compute Individual Typology Angle (ITA):
      ITA = atan2(L* - 50, b*) × (180 / π)
    ITA > 55° → Type 1 (very fair)
@@ -22,24 +36,15 @@ Algorithm
    ITA 10–28° → Type 4 (olive)
    ITA −30 to 10° → Type 5 (brown)
    ITA < −30° → Type 6 (deep)
-4. Apply a per-type HR/HRV calibration factor derived from the Diverse-rPPG
-   2026 framework (linear approximation for MVP).
-5. Attach calibration metadata to result flags.
+4. Attach the estimate as metadata flags. No output values are changed.
 
-MVP limitations
----------------
-- Full production calibration requires the licensed Diverse-rPPG 2026 dataset
-  and multi-channel (POS/CHROM) signal processing — Sprint 3 target.
-- Per-device camera spectral response correction is not applied.
-- Frame RGB means are JPEG-derived estimates, not true spectral values.
-- For Types 5–6, accuracy is lower; an explicit accuracy note is attached.
-
-Accuracy note (Types 5–6)
---------------------------
-Green-channel rPPG has reduced accuracy for Fitzpatrick Types 5–6.
-Calibration mitigates but does not eliminate this bias. Results for these
-skin types should be interpreted with additional caution and are tagged with
-'skin_tone_accuracy_note: calibration_applied_accuracy_may_vary'.
+Limitations
+-----------
+- ITA from a centre-ROI mean is confounded by exposure and white balance; it
+  must not be used as a grouping variable for fairness evaluation.
+- Frame RGB means are camera-processed estimates, not true spectral values.
+- For Types 5–6 the pulsatile amplitude is lower, so an accuracy note is
+  attached as metadata.
 
 This is a wellness screening indicator only — not a diagnostic reading.
 """
@@ -47,7 +52,7 @@ This is a wellness screening indicator only — not a diagnostic reading.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import IntEnum
 
 from app.services.rppg_processor import FrameSample, RppgResult
@@ -82,19 +87,22 @@ _ITA_THRESHOLDS: list[tuple[float, FitzpatrickType]] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Per-type rPPG calibration parameters
+# Per-type rPPG metadata
 # ---------------------------------------------------------------------------
-# Derived from Diverse-rPPG 2026 framework — MVP linear approximation.
-# hr_factor: multiplicative correction to green-channel HR estimate.
-# quality_weight: additive quality score modifier (negative = SNR penalty).
-# confidence: how reliable this calibration is (0.0–1.0).
+# hr_factor: kept in the table only so the invariant is explicit and testable.
+#   It MUST be 1.0 for every type: HR is a frequency and is not corrected by
+#   skin tone (Phase 0 fairness fix). See module docstring.
+# quality_weight: 0.0 for every type, so the spectral quality score is not
+#   shifted by an exposure-confounded skin-tone estimate.
+# confidence: metadata only — how reliable the rPPG estimate is expected to be
+#   for this type. It never alters the HR/HRV values.
 _CALIBRATION: dict[FitzpatrickType, dict] = {
-    FitzpatrickType.TYPE_1: {"hr_factor": 1.000, "quality_weight": 0.00, "confidence": 0.95},
-    FitzpatrickType.TYPE_2: {"hr_factor": 1.000, "quality_weight": 0.00, "confidence": 0.95},
-    FitzpatrickType.TYPE_3: {"hr_factor": 0.999, "quality_weight": 0.00, "confidence": 0.92},
-    FitzpatrickType.TYPE_4: {"hr_factor": 0.998, "quality_weight": -0.02, "confidence": 0.90},
-    FitzpatrickType.TYPE_5: {"hr_factor": 0.970, "quality_weight": -0.05, "confidence": 0.75},
-    FitzpatrickType.TYPE_6: {"hr_factor": 0.950, "quality_weight": -0.08, "confidence": 0.60},
+    FitzpatrickType.TYPE_1: {"hr_factor": 1.0, "quality_weight": 0.0, "confidence": 0.95},
+    FitzpatrickType.TYPE_2: {"hr_factor": 1.0, "quality_weight": 0.0, "confidence": 0.95},
+    FitzpatrickType.TYPE_3: {"hr_factor": 1.0, "quality_weight": 0.0, "confidence": 0.92},
+    FitzpatrickType.TYPE_4: {"hr_factor": 1.0, "quality_weight": 0.0, "confidence": 0.90},
+    FitzpatrickType.TYPE_5: {"hr_factor": 1.0, "quality_weight": 0.0, "confidence": 0.75},
+    FitzpatrickType.TYPE_6: {"hr_factor": 1.0, "quality_weight": 0.0, "confidence": 0.60},
 }
 
 # Types where green-channel accuracy is materially reduced — add accuracy note
@@ -110,8 +118,8 @@ _LOW_ACCURACY_TYPES = {FitzpatrickType.TYPE_5, FitzpatrickType.TYPE_6}
 class SkinToneCalibrationResult:
     fitzpatrick_type: FitzpatrickType
     ita_angle: float  # degrees
-    confidence: float  # 0.0–1.0 (calibration reliability for this type)
-    calibration_applied: bool
+    confidence: float  # 0.0–1.0 (expected rPPG reliability for this type; metadata only)
+    calibration_applied: bool  # always False: no output values are modified
     accuracy_note: str | None  # present when reduced accuracy expected
     flags_added: list[str] = field(default_factory=list)
 
@@ -230,11 +238,13 @@ def apply_skin_tone_calibration(
     result: RppgResult, frames: list[FrameSample]
 ) -> tuple[RppgResult, SkinToneCalibrationResult]:
     """
-    Apply skin tone calibration to an rPPG result.
+    Attach skin-tone metadata to an rPPG result without changing its values.
 
-    Estimates the user's Fitzpatrick type from frame RGB means, applies the
-    per-type calibration factor to HR/HRV, adjusts the quality score, and
-    attaches calibration metadata as flags.
+    Estimates the user's Fitzpatrick type and ITA from frame RGB means and
+    adds them as flags. ``hr_bpm``, ``hrv_ms``, ``respiratory_rate`` and
+    ``quality_score`` are returned unchanged for every Fitzpatrick type.
+
+    The function name is kept for backward compatibility with callers.
 
     Parameters
     ----------
@@ -243,48 +253,33 @@ def apply_skin_tone_calibration(
 
     Returns
     -------
-    (calibrated RppgResult, SkinToneCalibrationResult)
+    (RppgResult with metadata flags added, SkinToneCalibrationResult)
     """
     fitzpatrick_type, ita_angle = estimate_from_frames(frames)
-    cal = _CALIBRATION[fitzpatrick_type]
+    meta = _CALIBRATION[fitzpatrick_type]
 
     flags_added: list[str] = [
         f"skin_tone_fitzpatrick_type_{fitzpatrick_type.value}",
         f"skin_tone_ita_{ita_angle:.1f}",
+        # Kept for downstream compatibility: signals that skin-tone estimation ran.
         "skin_tone_calibration_applied",
+        "skin_tone_metadata_only",
     ]
 
     accuracy_note: str | None = None
     if fitzpatrick_type in _LOW_ACCURACY_TYPES:
-        accuracy_note = "calibration_applied_accuracy_may_vary"
+        accuracy_note = "reduced_pulse_amplitude_accuracy_may_vary"
         flags_added.append(f"skin_tone_accuracy_note:{accuracy_note}")
 
-    # Apply HR/HRV correction factor
-    calibrated_hr = (
-        round(result.hr_bpm * cal["hr_factor"], 1) if result.hr_bpm is not None else None
-    )
-    calibrated_hrv = (
-        round(result.hrv_ms * cal["hr_factor"], 2) if result.hrv_ms is not None else None
-    )
-
-    # Adjust quality score (clamp to [0, 1])
-    calibrated_quality = round(max(0.0, min(1.0, result.quality_score + cal["quality_weight"])), 4)
-
-    calibrated_result = RppgResult(
-        hr_bpm=calibrated_hr,
-        hrv_ms=calibrated_hrv,
-        respiratory_rate=result.respiratory_rate,
-        quality_score=calibrated_quality,
-        flags=result.flags + flags_added,
-    )
+    annotated_result = replace(result, flags=result.flags + flags_added)
 
     skin_tone_result = SkinToneCalibrationResult(
         fitzpatrick_type=fitzpatrick_type,
         ita_angle=round(ita_angle, 2),
-        confidence=cal["confidence"],
-        calibration_applied=True,
+        confidence=meta["confidence"],
+        calibration_applied=False,
         accuracy_note=accuracy_note,
         flags_added=flags_added,
     )
 
-    return calibrated_result, skin_tone_result
+    return annotated_result, skin_tone_result

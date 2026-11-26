@@ -1,4 +1,4 @@
-"""Tests for the skin tone calibration module (D5 — Fitzpatrick Types 1–6)."""
+"""Tests for the skin tone metadata module (D5 — Fitzpatrick Types 1–6)."""
 
 import pytest
 
@@ -141,13 +141,32 @@ def test_calibration_preserves_hr_for_type_1_2():
         assert calibrated.hr_bpm == pytest.approx(72.0, abs=0.5)
 
 
-def test_calibration_applies_correction_for_type_5_6():
-    """Types 5–6 have hr_factor < 1.0 — calibrated HR should be lower."""
-    frames = _make_frames(*_TYPE_RGB[FitzpatrickType.TYPE_6])
-    result = _make_rppg_result(hr=72.0)
+@pytest.mark.parametrize("ftype", list(FitzpatrickType))
+def test_hr_output_strictly_invariant_to_fitzpatrick_type(ftype):
+    """Phase 0: HR/HRV/quality must be identical for every Fitzpatrick type.
+
+    Replaces the old test that asserted Types 5-6 HR was scaled down by a
+    multiplicative hr_factor. HR is a frequency; skin tone is metadata only.
+    """
+    frames = _make_frames(*_TYPE_RGB[ftype])
+    result = _make_rppg_result(hr=72.0, hrv=45.0, quality=0.85)
     calibrated, skin_cal = apply_skin_tone_calibration(result, frames)
-    if skin_cal.fitzpatrick_type in (FitzpatrickType.TYPE_5, FitzpatrickType.TYPE_6):
-        assert calibrated.hr_bpm < 72.0
+
+    assert calibrated.hr_bpm == 72.0
+    assert calibrated.hrv_ms == 45.0
+    assert calibrated.respiratory_rate == 16.0
+    assert calibrated.quality_score == 0.85
+    assert skin_cal.calibration_applied is False
+    assert any(f.startswith("skin_tone_ita_") for f in calibrated.flags)
+
+
+def test_hr_factor_is_unity_for_every_type():
+    """The per-type table must not carry any HR scaling or quality shift."""
+    from app.services.skin_tone import _CALIBRATION
+
+    for ftype in FitzpatrickType:
+        assert _CALIBRATION[ftype]["hr_factor"] == 1.0
+        assert _CALIBRATION[ftype]["quality_weight"] == 0.0
 
 
 def test_calibration_adds_fitzpatrick_type_flag():

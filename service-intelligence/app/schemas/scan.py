@@ -66,6 +66,13 @@ class ScanResultSubmit(BaseModel):
     frame_g_mean: float | None = Field(default=None, ge=0.0, le=255.0)
     frame_b_mean: float | None = Field(default=None, ge=0.0, le=255.0)
 
+    # Explicit conjunctival (inner lower eyelid) ROI means. The anemia colour
+    # heuristic only runs when all three are present; it never runs on the
+    # face-centre ROI means above.
+    conjunctival_r_mean: float | None = Field(default=None, ge=0.0, le=255.0)
+    conjunctival_g_mean: float | None = Field(default=None, ge=0.0, le=255.0)
+    conjunctival_b_mean: float | None = Field(default=None, ge=0.0, le=255.0)
+
     @field_validator("flags")
     @classmethod
     def validate_flags(cls, v: list[str]) -> list[str]:
