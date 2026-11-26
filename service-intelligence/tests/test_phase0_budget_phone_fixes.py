@@ -28,6 +28,7 @@ from app.services import rppg_processor as rp
 from app.services.rppg_processor import FrameSample, process_frames
 from app.services.scan_evaluation_service import evaluate_scan_submission
 from app.services.skin_tone import FitzpatrickType, apply_skin_tone_calibration
+from app.services.vitals_extraction import ExtractedVitals
 
 # Relative pulsatile strength per channel (R, G, B), de Haan & Jeanne 2013 PBV.
 _PBV = np.array([0.33, 0.77, 0.53])
@@ -531,3 +532,111 @@ def test_deep_dive_scan_skips_anemia_entirely():
     )
     assert evaluation.hb_proxy_score is None
     assert evaluation.anemia_not_applicable_reason is None
+
+
+# ---------------------------------------------------------------------------
+# 7. Follow-up: POS sample-rate default, flat / no-peak traces as abstentions
+# ---------------------------------------------------------------------------
+
+
+def test_pos_waveform_sample_rate_defaults_to_upsample_target():
+    frames = _make_trace(hr_bpm=72.0, seed=21)
+    rgb = np.array([[f.r_mean, f.g_mean, f.b_mean] for f in frames])
+    default = rp._extract_pos_waveform(rgb)
+    explicit = rp._extract_pos_waveform(rgb, rp.UPSAMPLE_TARGET_FS)
+    assert np.allclose(default, explicit)
+    # The window can still be passed by keyword without a sample rate.
+    assert np.allclose(
+        rp._extract_pos_waveform(rgb, window_s=1.6),
+        rp._extract_pos_waveform(rgb, rp.UPSAMPLE_TARGET_FS, 1.6),
+    )
+
+
+def _flat_frames(count: int = 300, fps: float = 30.0) -> list[FrameSample]:
+    return [
+        FrameSample(t_ms=index * 1000.0 / fps, r_mean=150.0, g_mean=120.0, b_mean=95.0)
+        for index in range(count)
+    ]
+
+
+_CLIENT_VITALS = ExtractedVitals(heart_rate=88.0, hrv=55.0, spo2=97.0)
+
+
+def _assert_signal_failure_abstention(evaluation, reason: str) -> None:
+    assert evaluation.hr_abstained is True
+    assert evaluation.hr_abstention_reason == reason
+    assert evaluation.submission.hr_bpm is None
+    assert evaluation.submission.hrv_ms is None
+    assert evaluation.submission.respiratory_rate is None
+    assert evaluation.vascular_age_estimate is None
+    assert "hr_abstained" in evaluation.flags
+    assert f"abstain_reason:{reason}" in evaluation.flags
+
+
+def test_flat_signal_scan_abstains_and_blocks_extracted_vitals_backfill():
+    evaluation = evaluate_scan_submission(_submission(_flat_frames()), _CLIENT_VITALS)
+    assert "flat_signal" in evaluation.flags
+    _assert_signal_failure_abstention(evaluation, "flat_signal")
+    # SpO2 is not an rPPG output and is still passed through.
+    assert evaluation.spo2 == 97.0
+
+
+def test_flat_signal_deep_dive_scan_never_leaks_client_hr():
+    evaluation = evaluate_scan_submission(
+        _submission(_flat_frames(count=900), scan_type=ScanType.DEEP_DIVE), _CLIENT_VITALS
+    )
+    assert "flat_signal" in evaluation.flags
+    _assert_signal_failure_abstention(evaluation, "flat_signal")
+
+
+@pytest.mark.parametrize("snr_db", [None, 4.0], ids=["before_spectral", "after_spectral"])
+def test_insufficient_peaks_scan_abstains_and_blocks_extracted_vitals_backfill(monkeypatch, snr_db):
+    from app.services import scan_evaluation_service as ses
+
+    no_peaks = rp.RppgResult(
+        hr_bpm=None,
+        hrv_ms=None,
+        respiratory_rate=None,
+        quality_score=0.42,
+        flags=["insufficient_peaks"],
+        snr_db=snr_db,
+        effective_fps=30.0,
+    )
+    monkeypatch.setattr(ses, "process_frames", lambda frames: no_peaks)
+
+    evaluation = evaluate_scan_submission(
+        _submission(_make_trace(hr_bpm=70.0, seed=22)), _CLIENT_VITALS
+    )
+    _assert_signal_failure_abstention(evaluation, "insufficient_peaks")
+    if snr_db is None:
+        # No spectral analysis: the mobile score stands, as before.
+        assert evaluation.submission.quality_score == 0.95
+    else:
+        assert evaluation.submission.quality_score == 0.42
+
+
+def test_insufficient_peaks_deep_dive_scan_never_leaks_client_hr(monkeypatch):
+    from app.services import scan_evaluation_service as ses
+    from app.services.morphology_processor import MorphologyResult
+
+    no_peaks = MorphologyResult(
+        hr_bpm=None,
+        hrv_ms=None,
+        stiffness_index=None,
+        quality_score=0.3,
+        flags=["insufficient_peaks"],
+    )
+    monkeypatch.setattr(ses, "process_morphology_frames", lambda frames, height: no_peaks)
+
+    evaluation = evaluate_scan_submission(
+        _submission(_make_trace(hr_bpm=70.0, seed=23), scan_type=ScanType.DEEP_DIVE),
+        _CLIENT_VITALS,
+    )
+    _assert_signal_failure_abstention(evaluation, "insufficient_peaks")
+
+
+def test_scan_without_frame_data_keeps_client_vitals():
+    evaluation = evaluate_scan_submission(_submission([], frame_data=None), _CLIENT_VITALS)
+    assert evaluation.hr_abstained is False
+    assert evaluation.submission.hr_bpm == 72.0
+    assert evaluation.submission.hrv_ms == 48.0

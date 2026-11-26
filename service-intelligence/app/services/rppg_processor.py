@@ -443,7 +443,7 @@ def _repair_timestamps(
 
 def _extract_pos_waveform(
     rgb: np.ndarray,
-    sample_rate_hz: float,
+    sample_rate_hz: float = UPSAMPLE_TARGET_FS,
     window_s: float = POS_WINDOW_S,
 ) -> np.ndarray:
     """Windowed POS with overlap-add (Wang et al. 2017, Algorithm 1).
@@ -453,6 +453,9 @@ def _extract_pos_waveform(
       S1 = Gn - Bn,  S2 = Gn + Bn - 2Rn  projection onto the POS plane
       h  = S1 + (std(S1) / std(S2)) * S2
       H[window] += h - mean(h)         overlap-add
+
+    ``sample_rate_hz`` defaults to ``UPSAMPLE_TARGET_FS`` so existing callers
+    that pass only ``rgb`` keep working.
     """
     if window_s <= 0:
         raise ValueError("invalid_pos_window")

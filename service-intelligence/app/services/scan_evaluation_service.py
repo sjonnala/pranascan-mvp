@@ -42,12 +42,20 @@ class ScanEvaluation:
     anemia_not_applicable_reason: str | None = None
 
 
+# Signal-failure flags that, once frame_data was provided, mean the server saw
+# no usable pulse. They are treated as abstentions so a client-reported value
+# can never stand in for a trace the server could not read.
+_SIGNAL_FAILURE_ABSTENTION_FLAGS = ("flat_signal", "insufficient_peaks")
+
+
 @dataclass(frozen=True)
 class _RppgOutcome:
     submission: ScanResultSubmit
     flags: list[str]
     stiffness_index: float | None
     rppg: RppgResult | None = None
+    hr_abstained: bool = False
+    abstention_reason: str | None = None
 
 
 def evaluate_scan_submission(
@@ -59,7 +67,7 @@ def evaluate_scan_submission(
     outcome = _apply_server_side_rppg(submission)
     processed_submission = outcome.submission
     rppg = outcome.rppg
-    hr_abstained = bool(rppg is not None and rppg.abstained)
+    hr_abstained = outcome.hr_abstained
 
     processed_submission = _apply_server_side_voice_dsp(processed_submission)
     if not hr_abstained:
@@ -110,7 +118,7 @@ def evaluate_scan_submission(
         spectral_snr_db=spectral_snr_db,
         effective_fps=rppg.effective_fps if rppg is not None else None,
         hr_abstained=hr_abstained,
-        hr_abstention_reason=rppg.abstention_reason if rppg is not None else None,
+        hr_abstention_reason=outcome.abstention_reason,
         anemia_applicable=bool(anemia is not None and anemia.applicable),
         anemia_not_applicable_reason=(anemia.not_applicable_reason if anemia is not None else None),
     )
@@ -148,6 +156,14 @@ def _apply_server_side_rppg(submission: ScanResultSubmit) -> _RppgOutcome:
         # Contact-PPG morphology path: out of Phase 0 scope, behaviour unchanged.
         morphology = process_morphology_frames(frames, submission.user_height_cm)
         if morphology.hr_bpm is None:
+            failure_reason = _signal_failure_reason(morphology.flags)
+            if failure_reason is not None:
+                return _abstain_on_signal_failure(
+                    submission,
+                    morphology.flags,
+                    failure_reason,
+                    stiffness_index=morphology.stiffness_index,
+                )
             return _RppgOutcome(submission, morphology.flags, morphology.stiffness_index)
 
         return _RppgOutcome(
@@ -165,8 +181,21 @@ def _apply_server_side_rppg(submission: ScanResultSubmit) -> _RppgOutcome:
     rppg = process_frames(frames)
     rppg, _skin_tone_metadata = apply_skin_tone_calibration(rppg, frames)
 
+    failure_reason = _signal_failure_reason(rppg.flags) if rppg.hr_bpm is None else None
+    if failure_reason is not None:
+        # A flat trace or one with too few peaks: the server saw frames but no
+        # pulse, so no client or extracted value may fill the gap. The spectral
+        # score is reported when spectral analysis ran.
+        return _abstain_on_signal_failure(
+            submission,
+            rppg.flags,
+            failure_reason,
+            rppg=rppg,
+            quality_score=rppg.quality_score if rppg.snr_db is not None else None,
+        )
+
     if rppg.snr_db is None:
-        # The trace never reached spectral analysis (too short, flat, corrupt
+        # The trace never reached spectral analysis (too short, corrupt
         # timestamps). Nothing to override; keep the submission as received.
         return _RppgOutcome(submission, rppg.flags, None, rppg)
 
@@ -185,11 +214,13 @@ def _apply_server_side_rppg(submission: ScanResultSubmit) -> _RppgOutcome:
             rppg.flags,
             None,
             rppg,
+            hr_abstained=True,
+            abstention_reason=rppg.abstention_reason,
         )
 
     if rppg.hr_bpm is None:
-        # Spectral analysis ran but peak detection failed: keep the previous
-        # behaviour for HR fields, but report the honest spectral quality.
+        # Spectral analysis ran but produced no HR for another reason: keep the
+        # previous behaviour for HR fields, but report the honest spectral quality.
         return _RppgOutcome(
             submission.model_copy(update={"quality_score": rppg.quality_score}),
             rppg.flags,
@@ -212,6 +243,41 @@ def _apply_server_side_rppg(submission: ScanResultSubmit) -> _RppgOutcome:
         rppg.flags,
         None,
         rppg,
+    )
+
+
+def _signal_failure_reason(flags: list[str]) -> str | None:
+    for reason in _SIGNAL_FAILURE_ABSTENTION_FLAGS:
+        if reason in flags:
+            return reason
+    return None
+
+
+def _abstain_on_signal_failure(
+    submission: ScanResultSubmit,
+    flags: list[str],
+    reason: str,
+    *,
+    stiffness_index: float | None = None,
+    rppg: RppgResult | None = None,
+    quality_score: float | None = None,
+) -> _RppgOutcome:
+    """Clear HR, HRV and respiration and mark the scan as an abstention."""
+    update: dict[str, float | None] = {
+        "hr_bpm": None,
+        "hrv_ms": None,
+        "respiratory_rate": None,
+    }
+    if quality_score is not None:
+        update["quality_score"] = quality_score
+    abstention_flags = ["hr_abstained", "no_reliable_pulse", f"abstain_reason:{reason}"]
+    return _RppgOutcome(
+        submission.model_copy(update=update),
+        list(dict.fromkeys([*flags, *abstention_flags])),
+        stiffness_index,
+        rppg,
+        hr_abstained=True,
+        abstention_reason=reason,
     )
 
 
