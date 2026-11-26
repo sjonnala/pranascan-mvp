@@ -45,11 +45,16 @@ public class TrendAnalysisService {
                 .filter(result -> !result.getCreatedAt().isBefore(baselineCutoff))
                 .toList();
 
+        // Voice jitter and shimmer are deliberately NOT trend-alert inputs (Phase 0 voice
+        // audit, bug B19). Healthy jitter is ~0.3-1.5 %, so a 15 % relative threshold sits
+        // inside the measurement noise of even a correct estimator; in synthetic tests the
+        // rule fired for 61 % of users with a stable voice who scanned in ordinary home noise.
+        // A "consider_lab_followup" prompt driven by an unvalidated acoustic measure also
+        // pushes the wellness feature towards SaMD scope (CDSCO 2026 / FDA general-wellness
+        // guidance). Re-introduce voice only with a test-retest minimal detectable change.
         if (deviates(outcome.hrBpm(), baselineWindow, ScanResult::getHrBpm)
                 || deviates(outcome.hrvMs(), baselineWindow, ScanResult::getHrvMs)
-                || deviates(outcome.respiratoryRate(), baselineWindow, ScanResult::getRespiratoryRate)
-                || deviates(outcome.voiceJitterPct(), baselineWindow, ScanResult::getVoiceJitterPct)
-                || deviates(outcome.voiceShimmerPct(), baselineWindow, ScanResult::getVoiceShimmerPct)) {
+                || deviates(outcome.respiratoryRate(), baselineWindow, ScanResult::getRespiratoryRate)) {
             return TREND_ALERT;
         }
 

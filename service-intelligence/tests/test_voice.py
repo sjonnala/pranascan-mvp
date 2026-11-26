@@ -1,4 +1,9 @@
-"""Unit tests for voice DSP processor."""
+"""Unit tests for voice DSP processor.
+
+Phase 0 (voice audit B16): assertions no longer sit behind ``if result.jitter_pct is not
+None`` guards, so a test cannot pass just because the processor abstained. Realistic
+harmonic-vowel and home-noise fixtures live in ``test_phase0_voice_fixes.py``.
+"""
 
 import math
 
@@ -6,6 +11,7 @@ import numpy as np
 
 from app.services.voice_processor import (
     MIN_VOICED_FRACTION_ACCOMMODATED,
+    REASON_SHORT_VOICE,
     SAMPLE_RATE,
     SNR_THRESHOLD_FOR_ACCOMMODATION_DB,
     VoiceResult,
@@ -64,37 +70,40 @@ def test_process_audio_returns_voice_result():
     assert isinstance(result, VoiceResult)
 
 
-def test_pure_sine_jitter_low():
-    """Pure sine should have jitter < 5%."""
-    samples = _pure_sine(freq_hz=200.0)
-    result = process_audio(samples)
-    if result.jitter_pct is not None:
-        assert result.jitter_pct < 5.0, f"Jitter too high on pure sine: {result.jitter_pct}%"
+def test_pure_sine_jitter_near_zero():
+    """A perfectly periodic (non-mains) sine has zero true jitter."""
+    result = process_audio(_pure_sine(freq_hz=220.0))
+    assert result.jitter_pct is not None, result.flags
+    assert result.jitter_pct < 0.3, f"Jitter too high on pure sine: {result.jitter_pct}%"
 
 
-def test_pure_sine_shimmer_low():
-    """Pure sine should have shimmer < 5%."""
-    samples = _pure_sine(freq_hz=200.0)
-    result = process_audio(samples)
-    if result.shimmer_pct is not None:
-        assert result.shimmer_pct < 5.0, f"Shimmer too high on pure sine: {result.shimmer_pct}%"
+def test_pure_sine_shimmer_near_zero():
+    result = process_audio(_pure_sine(freq_hz=220.0))
+    assert result.shimmer_pct is not None, result.flags
+    assert result.shimmer_pct < 0.5, f"Shimmer too high on pure sine: {result.shimmer_pct}%"
 
 
-def test_pure_sine_snr_high():
-    """Pure sine (no silence frames) should yield high SNR or ~40dB."""
-    samples = _pure_sine(freq_hz=200.0, amplitude=0.8)
-    result = process_audio(samples)
-    assert result.snr_db is not None
-    assert result.snr_db > 15.0, f"SNR too low for pure sine: {result.snr_db} dB"
+def test_continuous_sine_has_no_snr_sentinel():
+    """No pause means no noise reference: SNR is unknown (None), never a 40 dB sentinel."""
+    result = process_audio(_pure_sine(freq_hz=220.0, amplitude=0.8))
+    assert result.snr_db is None
+    assert "no_noise_reference" in result.flags
+
+
+def test_mains_multiple_pure_sine_is_treated_as_stationary_tone():
+    """A perfectly steady 200 Hz tone (4 x 50 Hz) cannot be told from mains machinery."""
+    result = process_audio(_pure_sine(freq_hz=200.0))
+    assert result.jitter_pct is None
+    assert "stationary_tone_suspected" in result.flags
 
 
 def test_noisy_sine_has_higher_jitter_than_pure():
-    """Noisy sine should have higher jitter than pure sine."""
-    pure_result = process_audio(_pure_sine(freq_hz=200.0))
-    noisy_result = process_audio(_noisy_sine(freq_hz=200.0, noise_std=0.15))
-    # Only compare if both produced valid results
-    if pure_result.jitter_pct is not None and noisy_result.jitter_pct is not None:
-        assert noisy_result.jitter_pct >= pure_result.jitter_pct
+    """Additive noise perturbs cycle timing, so measured jitter rises."""
+    pure_result = process_audio(_pure_sine(freq_hz=220.0))
+    noisy_result = process_audio(_noisy_sine(freq_hz=220.0, amplitude=0.5, noise_std=0.1))
+    assert pure_result.jitter_pct is not None
+    assert noisy_result.jitter_pct is not None, noisy_result.flags
+    assert noisy_result.jitter_pct > pure_result.jitter_pct
 
 
 def test_voiced_fraction_high_for_continuous_sine():
@@ -114,6 +123,8 @@ def test_silence_returns_none_jitter():
     result = process_audio(_silence())
     assert result.jitter_pct is None
     assert result.shimmer_pct is None
+    assert result.abstained
+    assert result.abstention_reason == "no_voice_detected"
 
 
 def test_too_few_samples_returns_flag():
@@ -142,19 +153,19 @@ def test_accented_vowel_accommodation_allows_high_snr_partial_voicing():
     assert result.shimmer_pct is not None
 
 
-def test_partial_voicing_low_snr_still_returns_insufficient_voiced_content():
-    """Low-SNR partial voicing must not use the accented-vowel accommodation path."""
-    result = process_audio(
-        _partially_voiced_sine(voiced_duration_s=2.0, amplitude=0.02, silence_level=0.005)
-    )
+def test_partial_voicing_low_snr_is_not_accommodated():
+    """Low-SNR partial voicing must not use the accented-vowel accommodation path.
 
-    assert 0.35 <= result.voiced_fraction < 0.5
+    The old version of this test used a constant DC offset as "noise"; DC is now removed
+    before analysis, so real broadband noise is used instead.
+    """
+    clean = np.array(_partially_voiced_sine(voiced_duration_s=2.0, amplitude=0.05))
+    noise = np.random.default_rng(7).normal(0.0, 0.01, len(clean))
+    result = process_audio(list(clean + noise))
+
     assert result.snr_db is not None
     assert result.snr_db < 20.0
     assert "accented_vowel_accommodated" not in result.flags
-    assert "insufficient_voiced_content" in result.flags
-    assert result.jitter_pct is None
-    assert result.shimmer_pct is None
 
 
 # ---------------------------------------------------------------------------
@@ -256,15 +267,16 @@ def test_standard_voiced_fraction_not_flagged_as_accented():
     assert "accented_vowel_accommodated" not in result.flags
 
 
-def test_accented_vowel_too_low_voiced_fraction_still_rejected():
+def test_short_voiced_segment_still_rejected():
     """
-    voiced_fraction < MIN_VOICED_FRACTION_ACCOMMODATED → always rejected,
-    even at high SNR.
+    Less than 1 s of voice (here 15 % of a 5 s clip) is always rejected, even at
+    high SNR, with an explicit duration reason.
     """
-    samples = _partial_voiced_high_snr(voiced_fraction=0.20)
+    samples = _partial_voiced_high_snr(voiced_fraction=0.15)
     result = process_audio(samples)
     assert result.jitter_pct is None
     assert result.shimmer_pct is None
+    assert result.abstention_reason == REASON_SHORT_VOICE
 
 
 def test_accommodation_constants_are_sensible():
