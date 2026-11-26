@@ -26,6 +26,18 @@ jobs:
       - run: ruff check app/
       - run: black --check app/
 
+  privacy-boundaries:
+    name: Privacy Boundaries — Static Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      # stdlib only: fails if raw frames/audio/Mel/landmarks reach a log, audit or analytics
+      # sink, or a Fitzpatrick class reaches one outside a consent check.
+      - run: python scripts/check_privacy_boundaries.py
+
   service-intelligence-test:
     name: Service Intelligence — Pytest
     runs-on: ubuntu-latest
