@@ -1,0 +1,5 @@
+# CPU-only Hugging Face Space. Versions match the Cycle-2 shootout pins where they overlap.
+gradio>=4.44,<6
+numpy>=1.26
+scipy>=1.12
+onnxruntime==1.29.0
