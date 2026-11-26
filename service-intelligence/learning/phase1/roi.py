@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,18 @@ import numpy as np
 from app.services.rppg_processor import FrameSample, process_frames
 
 from .common import ensure_output_dir, write_frame_samples_csv, write_json
+from .dataset_model import FrameSource
+from .frame_sources import OptionalDependencyError, VideoFileSource
+
+__all__ = [
+    "PATCH_LAYOUTS",
+    "SUPPORTED_ROI_MODES",
+    "OptionalDependencyError",
+    "extract_multi_patch_traces_from_source",
+    "extract_multi_patch_traces_from_video",
+    "extract_patch_trace_from_video",
+    "summarize_patch_stability",
+]
 
 PATCH_LAYOUTS: dict[str, tuple[float, float, float, float]] = {
     "forehead": (0.28, 0.12, 0.72, 0.30),
@@ -18,8 +31,11 @@ PATCH_LAYOUTS: dict[str, tuple[float, float, float, float]] = {
 }
 
 
-class OptionalDependencyError(RuntimeError):
-    """Raised when optional ROI dependencies are missing."""
+SUPPORTED_ROI_MODES: tuple[str, ...] = ("mediapipe", "full_frame")
+"""``mediapipe``: patches relative to the face-mesh bounding box.
+``full_frame``: the frame is already a face crop (SCAMPS crops, pre-cropped exports)."""
+
+FaceBox = tuple[int, int, int, int]
 
 
 def extract_patch_trace_from_video(
@@ -45,16 +61,82 @@ def extract_multi_patch_traces_from_video(
     max_frames: int | None = None,
 ) -> dict[str, list[FrameSample]]:
     """Extract RGB traces for multiple patches from a saved video."""
-    if roi_mode != "mediapipe":
-        raise ValueError("Only roi_mode='mediapipe' is supported in the current lab.")
+    _validate_roi_request(patch_names, roi_mode)
+    return extract_multi_patch_traces_from_source(
+        VideoFileSource(Path(video_path), max_frames=max_frames),
+        patch_names=patch_names,
+        roi_mode=roi_mode,
+    )
 
+
+def extract_multi_patch_traces_from_source(
+    source: FrameSource,
+    patch_names: list[str] | tuple[str, ...] = ("forehead", "left_cheek", "right_cheek"),
+    roi_mode: str = "mediapipe",
+    max_frames: int | None = None,
+    face_box_detector: Callable[[np.ndarray], FaceBox | None] | None = None,
+) -> dict[str, list[FrameSample]]:
+    """Extract per-patch RGB traces from any ``FrameSource``.
+
+    Timestamps come from the source itself (dossier gap G6), so variable-rate
+    sources keep their true timing. ``face_box_detector`` lets tests or other
+    detectors replace MediaPipe; it returns ``(x_min, y_min, x_max, y_max)`` or
+    ``None`` when no face is found.
+    """
+    _validate_roi_request(patch_names, roi_mode)
+
+    close: Callable[[], None] | None = None
+    if face_box_detector is None:
+        if roi_mode == "full_frame":
+            face_box_detector = _full_frame_box
+        else:
+            face_box_detector, close = _mediapipe_face_box_detector()
+
+    traces: dict[str, list[FrameSample]] = {patch_name: [] for patch_name in patch_names}
     try:
-        import cv2
-    except ImportError as exc:
-        raise OptionalDependencyError(
-            "OpenCV is required for ROI extraction. Install service-intelligence/requirements-phase1.txt."
-        ) from exc
+        for frame_index, (timestamp_ms, frame_rgb) in enumerate(source.frames()):
+            if max_frames is not None and frame_index >= max_frames:
+                break
+            face_box = face_box_detector(frame_rgb)
+            if face_box is None:
+                continue
+            for patch_name in patch_names:
+                patch = _extract_relative_patch(frame_rgb, face_box, PATCH_LAYOUTS[patch_name])
+                if patch.size == 0:
+                    continue
+                mean_rgb = patch.reshape(-1, 3).mean(axis=0)
+                traces[patch_name].append(
+                    FrameSample(
+                        t_ms=float(timestamp_ms),
+                        r_mean=float(mean_rgb[0]),
+                        g_mean=float(mean_rgb[1]),
+                        b_mean=float(mean_rgb[2]),
+                    )
+                )
+    finally:
+        if close is not None:
+            close()
+    return traces
 
+
+def _validate_roi_request(patch_names: list[str] | tuple[str, ...], roi_mode: str) -> None:
+    if roi_mode not in SUPPORTED_ROI_MODES:
+        supported = ", ".join(SUPPORTED_ROI_MODES)
+        raise ValueError(f"Unsupported roi_mode '{roi_mode}'. Supported: {supported}.")
+    for patch_name in patch_names:
+        if patch_name not in PATCH_LAYOUTS:
+            available = ", ".join(sorted(PATCH_LAYOUTS))
+            raise ValueError(f"Unknown patch '{patch_name}'. Available patches: {available}")
+
+
+def _full_frame_box(frame_rgb: np.ndarray) -> FaceBox:
+    height, width = frame_rgb.shape[:2]
+    return (0, 0, width, height)
+
+
+def _mediapipe_face_box_detector() -> (
+    tuple[Callable[[np.ndarray], FaceBox | None], Callable[[], None]]
+):
     try:
         import mediapipe as mp
     except ImportError as exc:
@@ -62,17 +144,6 @@ def extract_multi_patch_traces_from_video(
             "MediaPipe is required for ROI extraction. Install service-intelligence/requirements-phase1.txt."
         ) from exc
 
-    for patch_name in patch_names:
-        if patch_name not in PATCH_LAYOUTS:
-            available = ", ".join(sorted(PATCH_LAYOUTS))
-            raise ValueError(f"Unknown patch '{patch_name}'. Available patches: {available}")
-
-    capture = cv2.VideoCapture(str(video_path))
-    if not capture.isOpened():
-        raise ValueError(f"Unable to open video '{video_path}'.")
-
-    traces = {patch_name: [] for patch_name in patch_names}
-    fps = float(capture.get(cv2.CAP_PROP_FPS) or 30.0)
     face_mesh = mp.solutions.face_mesh.FaceMesh(
         static_image_mode=False,
         max_num_faces=1,
@@ -81,62 +152,23 @@ def extract_multi_patch_traces_from_video(
         min_tracking_confidence=0.5,
     )
 
-    frame_index = 0
-    try:
-        while True:
-            if max_frames is not None and frame_index >= max_frames:
-                break
+    def detect(frame_rgb: np.ndarray) -> FaceBox | None:
+        results = face_mesh.process(frame_rgb)
+        if not results.multi_face_landmarks:
+            return None
+        h, w, _ = frame_rgb.shape
+        landmarks = results.multi_face_landmarks[0].landmark
+        xs = np.array([landmark.x * w for landmark in landmarks], dtype=np.float64)
+        ys = np.array([landmark.y * h for landmark in landmarks], dtype=np.float64)
+        x_min = max(0, int(np.floor(np.min(xs))))
+        x_max = min(w, int(np.ceil(np.max(xs))))
+        y_min = max(0, int(np.floor(np.min(ys))))
+        y_max = min(h, int(np.ceil(np.max(ys))))
+        if x_max <= x_min or y_max <= y_min:
+            return None
+        return (x_min, y_min, x_max, y_max)
 
-            success, frame_bgr = capture.read()
-            if not success:
-                break
-
-            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-            results = face_mesh.process(frame_rgb)
-            if not results.multi_face_landmarks:
-                frame_index += 1
-                continue
-
-            h, w, _ = frame_rgb.shape
-            landmarks = results.multi_face_landmarks[0].landmark
-            xs = np.array([landmark.x * w for landmark in landmarks], dtype=np.float64)
-            ys = np.array([landmark.y * h for landmark in landmarks], dtype=np.float64)
-
-            x_min = max(0, int(np.floor(np.min(xs))))
-            x_max = min(w, int(np.ceil(np.max(xs))))
-            y_min = max(0, int(np.floor(np.min(ys))))
-            y_max = min(h, int(np.ceil(np.max(ys))))
-            if x_max <= x_min or y_max <= y_min:
-                frame_index += 1
-                continue
-
-            timestamp_ms = float(
-                capture.get(cv2.CAP_PROP_POS_MSEC) or ((frame_index / fps) * 1000.0)
-            )
-            for patch_name in patch_names:
-                patch = _extract_relative_patch(
-                    frame_rgb,
-                    (x_min, y_min, x_max, y_max),
-                    PATCH_LAYOUTS[patch_name],
-                )
-                if patch.size == 0:
-                    continue
-                mean_rgb = patch.reshape(-1, 3).mean(axis=0)
-                traces[patch_name].append(
-                    FrameSample(
-                        t_ms=timestamp_ms,
-                        r_mean=float(mean_rgb[0]),
-                        g_mean=float(mean_rgb[1]),
-                        b_mean=float(mean_rgb[2]),
-                    )
-                )
-
-            frame_index += 1
-    finally:
-        face_mesh.close()
-        capture.release()
-
-    return traces
+    return detect, face_mesh.close
 
 
 def summarize_patch_stability(
