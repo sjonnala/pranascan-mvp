@@ -2,6 +2,7 @@ package com.pranapulse.core.scan.application;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -135,6 +136,39 @@ class ScanSessionServiceIntegrationTest {
     }
 
     @Test
+    void voiceOnlyDeviationDoesNotRaiseTrendAlert() {
+        User user = userRepository.save(new User("oidc-subject-5", "scan-owner-5@example.com", "Scan Owner 5", null));
+        consentService.grantConsent(user.getId(), "1.0", "wellness_screening", null, null);
+
+        when(scanEvaluationService.evaluate(any())).thenReturn(
+                successOutcome(),
+                successOutcome(),
+                successOutcome(),
+                voiceOnlyDeviatingOutcome()
+        );
+
+        for (int index = 0; index < 3; index++) {
+            ScanSession session = scanSessionService.createSession(
+                    user.getId(),
+                    new CreateScanSessionCommand(ScanType.STANDARD, "Pixel 9", "1.2.0")
+            );
+            scanSessionService.completeSession(user.getId(), session.getId(), sampleCommand());
+        }
+
+        ScanSession voiceSession = scanSessionService.createSession(
+                user.getId(),
+                new CreateScanSessionCommand(ScanType.STANDARD, "Pixel 9", "1.2.0")
+        );
+        ScanResult result = scanSessionService.completeSession(
+                user.getId(),
+                voiceSession.getId(),
+                sampleCommand()
+        );
+
+        assertNull(result.getTrendAlert());
+    }
+
+    @Test
     void returnsPaginatedHistory() {
         User user = userRepository.save(new User("oidc-subject-4", "scan-owner-4@example.com", "Scan Owner 4", null));
         consentService.grantConsent(user.getId(), "1.0", "wellness_screening", null, null);
@@ -222,6 +256,34 @@ class ScanSessionServiceIntegrationTest {
                 22.0,
                 List.of("borderline_noise"),
                 List.of("borderline_noise"),
+                true,
+                null,
+                36.0,
+                0.78,
+                11.4,
+                "monitor",
+                0.66
+        );
+    }
+
+    private static ScanEvaluationOutcome voiceOnlyDeviatingOutcome() {
+        // HR, HRV and respiratory rate match successOutcome(); jitter 0.4 -> 1.2 % (+200 %)
+        // and shimmer 1.8 -> 5.4 % (+200 %) would have crossed the 15 % threshold before B19.
+        return new ScanEvaluationOutcome(
+                72.0,
+                40.0,
+                97.0,
+                null,
+                15.0,
+                1.2,
+                5.4,
+                0.91,
+                0.8,
+                0.97,
+                0.94,
+                22.0,
+                List.of(),
+                List.of(),
                 true,
                 null,
                 36.0,

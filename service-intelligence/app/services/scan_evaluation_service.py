@@ -37,11 +37,11 @@ def evaluate_scan_submission(
 ) -> ScanEvaluation:
     """Apply deterministic scan processing without persistence or user-state concerns."""
     processed_submission, rppg_flags, stiffness_index = _apply_server_side_rppg(submission)
-    processed_submission = _apply_server_side_voice_dsp(processed_submission)
+    processed_submission, voice_flags = _apply_server_side_voice_dsp(processed_submission)
     processed_submission, spo2 = _apply_extracted_vitals(processed_submission, extracted_vitals)
 
     gate = run_quality_gate(processed_submission)
-    combined_flags = list(dict.fromkeys(gate.flags + rppg_flags))
+    combined_flags = list(dict.fromkeys(gate.flags + rppg_flags + voice_flags))
 
     vascular_age = estimate_vascular_age(
         processed_submission.hr_bpm,
@@ -120,22 +120,50 @@ def _apply_server_side_rppg(
     )
 
 
-def _apply_server_side_voice_dsp(submission: ScanResultSubmit) -> ScanResultSubmit:
+VOICE_FLAG_PREFIX = "voice_"
+
+
+def _apply_server_side_voice_dsp(
+    submission: ScanResultSubmit,
+) -> tuple[ScanResultSubmit, list[str]]:
+    """Run server-side voice DSP on submitted audio and reconcile it with client values.
+
+    - Voice processor flags are propagated as ``voice_<flag>`` evaluation flags (B8), so
+      the user and downstream services can see why voice was or was not measured. The
+      prefix keeps them distinct from the quality gate's own ``high_noise`` flag.
+    - When the server abstains, client-computed ``voice_jitter_pct`` and
+      ``voice_shimmer_pct`` are cleared to None instead of passing through unverified
+      (B7). The client's ``audio_snr_db`` is left as submitted.
+    - When the server measures, its values replace the client's. ``audio_snr_db`` is only
+      replaced by a measured server SNR, never by a sentinel.
+    """
     if not submission.audio_samples:
-        return submission
+        return submission, []
 
     audio = build_audio_samples(submission.audio_samples)
     voice = process_audio(audio)
-    if voice.jitter_pct is None:
-        return submission
+    voice_flags = [f"{VOICE_FLAG_PREFIX}{flag}" for flag in voice.flags]
 
-    return submission.model_copy(
+    if voice.jitter_pct is None:
+        voice_flags.append(f"{VOICE_FLAG_PREFIX}abstained")
+        had_client_values = (
+            submission.voice_jitter_pct is not None or submission.voice_shimmer_pct is not None
+        )
+        if had_client_values:
+            voice_flags.append(f"{VOICE_FLAG_PREFIX}client_values_cleared")
+        cleared = submission.model_copy(
+            update={"voice_jitter_pct": None, "voice_shimmer_pct": None}
+        )
+        return cleared, list(dict.fromkeys(voice_flags))
+
+    updated = submission.model_copy(
         update={
             "voice_jitter_pct": voice.jitter_pct,
             "voice_shimmer_pct": voice.shimmer_pct,
             "audio_snr_db": voice.snr_db if voice.snr_db is not None else submission.audio_snr_db,
         }
     )
+    return updated, list(dict.fromkeys(voice_flags))
 
 
 def _apply_extracted_vitals(
