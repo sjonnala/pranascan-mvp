@@ -287,7 +287,7 @@ export function CircleScreen({
 
             <View style={styles.interactionCard}>
               <MaterialIcons color={pranaPulseTheme.colors.tertiary} name="celebration" size={26} />
-              <Text style={styles.interactionTitle}>Send a 'Nudge' of Love</Text>
+              <Text style={styles.interactionTitle}>Send a &apos;Nudge&apos; of Love</Text>
               <TouchableOpacity onPress={onOpenResults}>
                 <Text style={styles.interactionLink}>
                   {pendingCount > 0

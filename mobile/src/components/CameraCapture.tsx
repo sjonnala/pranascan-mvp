@@ -12,6 +12,12 @@
  *   - 60 seconds
  *   - 60 FPS target when available
  *   - centre ROI red-derived trace for morphology processing
+ *
+ * Timing:
+ *   - each sample is stamped with VisionCamera's capture-time `frame.timestamp`, read inside
+ *     the frame processor worklet, so JS-thread stalls cannot collapse sample spacing
+ *   - `Date.now()` is used only for frames that carry no usable hardware timestamp
+ *   - delivered FPS and inter-frame jitter are reported in `CameraResult.capture_timing`
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -26,7 +32,7 @@ import {
 } from 'react-native-vision-camera';
 import { Worklets } from 'react-native-worklets-core';
 
-import { FrameSample, QualityMetrics, ScanType } from '../types';
+import { CaptureTimingMetadata, FrameSample, QualityMetrics, ScanType } from '../types';
 import {
   aggregateQualityMetrics,
   buildFrameSampleFromRgb,
@@ -36,6 +42,7 @@ import {
   computeOverallQualityScore,
   RgbTraceSample,
 } from '../utils/frameAnalyzer';
+import { buildCaptureTimingMetadata, FrameClock } from '../utils/frameTiming';
 import { pranaPulseTheme, withAlpha } from '../theme/pranaPulse';
 
 const STANDARD_SCAN_DURATION_MS = 30_000;
@@ -55,6 +62,8 @@ export interface CameraResult {
   frame_r_mean: number | null;
   frame_g_mean: number | null;
   frame_b_mean: number | null;
+  /** Delivered FPS, jitter and timestamp provenance. Optional so existing callers compile. */
+  capture_timing?: CaptureTimingMetadata;
 }
 
 interface CameraCaptureProps {
@@ -175,6 +184,7 @@ export function CameraCapture({
   const motionHistoryRef = useRef<number[]>([]);
   const faceConfidenceHistoryRef = useRef<number[]>([]);
   const scanStartRef = useRef<number | null>(null);
+  const frameClockRef = useRef(new FrameClock());
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanActiveRef = useRef(false);
 
@@ -194,6 +204,7 @@ export function CameraCapture({
     motionHistoryRef.current = [];
     faceConfidenceHistoryRef.current = [];
     scanStartRef.current = null;
+    frameClockRef.current = new FrameClock();
     setCurrentQuality(null);
     setTimeRemaining(scanDurationMs / 1000);
   }, [scanDurationMs]);
@@ -378,6 +389,10 @@ export function CameraCapture({
       frame_r_mean: frameRMean,
       frame_g_mean: frameGMean,
       frame_b_mean: frameBMean,
+      capture_timing: buildCaptureTimingMetadata(
+        frameClockRef.current,
+        frames.map((frame) => frame.t_ms),
+      ),
     });
   }, [onComplete, stopCountdown]);
 
@@ -390,12 +405,17 @@ export function CameraCapture({
   }, [onCancel, resetTraceState, stopCountdown]);
 
   const handleTraceSample = useCallback(
-    (rMean: number, gMean: number, bMean: number) => {
+    (rMean: number, gMean: number, bMean: number, frameTimestamp: number) => {
       if (!scanActiveRef.current) {
         return;
       }
 
-      const elapsed = Date.now() - (scanStartRef.current ?? Date.now());
+      // Capture-clock time; Date.now() is only consulted when the frame has no usable stamp.
+      const elapsed = frameClockRef.current.stamp(frameTimestamp, Date.now());
+      if (elapsed === null) {
+        // Duplicate or out-of-order frame: keeping it would break the monotonic trace.
+        return;
+      }
       const rgbSample: RgbTraceSample = {
         r_mean: rMean,
         g_mean: gMean,
@@ -446,11 +466,13 @@ export function CameraCapture({
 
       runAtTargetFps(preferredCameraFps, () => {
         'worklet';
+        // Read the capture-time stamp here, on the camera thread, before the JS hop.
+        const rawTimestamp = typeof frame.timestamp === 'number' ? frame.timestamp : 0;
         const roiAverage = extractCenterRoiAverage(frame, isDeepDive);
         if (!roiAverage) {
           return;
         }
-        emitTraceSample(roiAverage.rMean, roiAverage.gMean, roiAverage.bMean);
+        emitTraceSample(roiAverage.rMean, roiAverage.gMean, roiAverage.bMean, rawTimestamp);
       });
     },
     [emitTraceSample, isScanning, isDeepDive, preferredCameraFps],

@@ -406,7 +406,7 @@ export function ResultsScreen({
             Your body has been speaking.
           </Text>
           <Text style={styles.heroSubtitle}>
-            Here is what we've heard over the last week.
+            Here is what we&apos;ve heard over the last week.
           </Text>
         </View>
       </PranaPulseReveal>
