@@ -366,6 +366,28 @@ export interface FrameSample {
   b_mean: number;
 }
 
+/** Which clock stamped a scan's frame samples. */
+export type FrameTimestampSource = 'hardware' | 'wall_clock' | 'mixed';
+
+/**
+ * Capture-timing metadata for one camera scan.
+ *
+ * `delivered_fps` and `fps_jitter_ms` describe the frames that actually reached the trace
+ * (after any drops), which is what the rPPG pipeline sees. All fields are diagnostics:
+ * they never change the frame_data that is sent.
+ */
+export interface CaptureTimingMetadata {
+  delivered_fps: number | null;
+  fps_jitter_ms: number | null;
+  mean_frame_interval_ms: number | null;
+  frame_timestamp_source: FrameTimestampSource | null;
+  /** Unit inferred for VisionCamera frame.timestamp ('ns' on Android, 'ms' on iOS). */
+  frame_timestamp_unit: 's' | 'ms' | 'us' | 'ns' | null;
+  hardware_timestamp_count: number;
+  fallback_timestamp_count: number;
+  dropped_duplicate_frame_count: number;
+}
+
 // ─── Scan payload sent to backend ────────────────────────────────────────────
 
 export interface ScanResultPayload {
@@ -386,4 +408,8 @@ export interface ScanResultPayload {
   frame_r_mean?: number;
   frame_g_mean?: number;
   frame_b_mean?: number;
+  /** Optional capture metadata; older backends ignore unknown JSON fields. */
+  delivered_fps?: number;
+  fps_jitter_ms?: number;
+  frame_timestamp_source?: FrameTimestampSource;
 }

@@ -3,12 +3,16 @@
  */
 
 import React from 'react';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 type MockRgbFrame = {
   r: number;
   g: number;
   b: number;
+  /** VisionCamera frame.timestamp; omitted to mimic a simulator. */
+  timestamp?: number;
+  /** When the frame callback reaches JS, in ms after the camera mounts (default index * 5). */
+  emitAtMs?: number;
 };
 
 let mockPermissionGranted = true;
@@ -59,17 +63,21 @@ jest.mock('react-native-vision-camera', () => {
       }
 
       const timers = mockFrameSamples.map((sample, index) =>
-        setTimeout(() => {
-          act(() => {
-            frameProcessor.frameProcessor({
-              width: 120,
-              height: 120,
-              bytesPerRow: 120 * 4,
-              pixelFormat: 'rgb',
-              toArrayBuffer: () => mockBuildFrameBuffer(sample),
+        setTimeout(
+          () => {
+            act(() => {
+              frameProcessor.frameProcessor({
+                width: 120,
+                height: 120,
+                bytesPerRow: 120 * 4,
+                pixelFormat: 'rgb',
+                timestamp: sample.timestamp,
+                toArrayBuffer: () => mockBuildFrameBuffer(sample),
+              });
             });
-          });
-        }, index * 5)
+          },
+          sample.emitAtMs ?? index * 5
+        )
       );
 
       return () => {
@@ -99,7 +107,7 @@ jest.mock('react-native-vision-camera', () => {
   };
 });
 
-import { CameraCapture } from '../src/components/CameraCapture';
+import { CameraCapture, CameraResult } from '../src/components/CameraCapture';
 import { QualityMetrics } from '../src/types';
 
 const noop = () => {};
@@ -295,6 +303,94 @@ describe('quality updates', () => {
     const [metrics]: [QualityMetrics] = onQualityUpdate.mock.calls[0];
 
     expect(metrics.face_confidence).toBeLessThan(0.8);
+  });
+});
+
+describe('capture timing (hardware frame.timestamp)', () => {
+  const ANDROID_BOOT_NS = 512_000_000_123_456;
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  async function runFullScan(): Promise<CameraResult> {
+    jest.useFakeTimers();
+    const onComplete = jest.fn();
+    const { getByTestId } = render(
+      <CameraCapture onComplete={onComplete} onQualityUpdate={noop} onCancel={noop} />
+    );
+
+    fireEvent.press(getByTestId('start-scan'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(31_000);
+    });
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    return onComplete.mock.calls[0][0] as CameraResult;
+  }
+
+  it('stamps samples from frame.timestamp even when JS callbacks arrive in one burst', async () => {
+    // 16 FPS camera; a JS stall makes all callbacks land at the same instant (Date.now equal).
+    setFrameSamples(
+      Array.from({ length: 12 }, (_, index) => ({
+        r: 150 + (index % 3),
+        g: 132,
+        b: 112,
+        timestamp: ANDROID_BOOT_NS + index * 62_500_000,
+        emitAtMs: 50,
+      }))
+    );
+
+    const result = await runFullScan();
+    const tMs = result.frame_data.map((frame) => frame.t_ms);
+
+    expect(tMs).toHaveLength(12);
+    tMs.forEach((t, index) => expect(t).toBeCloseTo(index * 62.5, 3));
+    expect(result.capture_timing).toMatchObject({
+      delivered_fps: 16,
+      fps_jitter_ms: 0,
+      frame_timestamp_source: 'hardware',
+      frame_timestamp_unit: 'ns',
+      hardware_timestamp_count: 12,
+      fallback_timestamp_count: 0,
+      dropped_duplicate_frame_count: 0,
+    });
+  });
+
+  it('drops a re-delivered frame so the trace stays strictly increasing', async () => {
+    setFrameSamples([
+      { r: 150, g: 132, b: 112, timestamp: 1_000.0 },
+      { r: 151, g: 132, b: 112, timestamp: 1_050.0 },
+      { r: 151, g: 132, b: 112, timestamp: 1_050.0 },
+      { r: 150, g: 132, b: 112, timestamp: 1_100.0 },
+    ]);
+
+    const result = await runFullScan();
+
+    expect(result.frame_data.map((frame) => frame.t_ms)).toEqual([0, 50, 100]);
+    expect(result.capture_timing?.dropped_duplicate_frame_count).toBe(1);
+    expect(result.capture_timing?.frame_timestamp_unit).toBe('ms');
+  });
+
+  it('falls back to Date.now() when frame.timestamp is missing (simulator)', async () => {
+    setFrameSamples(
+      Array.from({ length: 4 }, (_, index) => ({
+        r: 150,
+        g: 132,
+        b: 112,
+        emitAtMs: 20 + index * 40,
+      }))
+    );
+
+    const result = await runFullScan();
+    const tMs = result.frame_data.map((frame) => frame.t_ms);
+
+    expect(tMs).toEqual([0, 40, 80, 120]);
+    expect(result.capture_timing?.frame_timestamp_source).toBe('wall_clock');
+    expect(result.capture_timing?.delivered_fps).toBe(25);
   });
 });
 

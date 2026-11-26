@@ -117,6 +117,10 @@ export function ScanScreen({
         frame_r_mean: capturedCameraResult.frame_r_mean ?? undefined,
         frame_g_mean: capturedCameraResult.frame_g_mean ?? undefined,
         frame_b_mean: capturedCameraResult.frame_b_mean ?? undefined,
+        delivered_fps: capturedCameraResult.capture_timing?.delivered_fps ?? undefined,
+        fps_jitter_ms: capturedCameraResult.capture_timing?.fps_jitter_ms ?? undefined,
+        frame_timestamp_source:
+          capturedCameraResult.capture_timing?.frame_timestamp_source ?? undefined,
       };
     },
     [parseDeepDiveHeight, scanType]
