@@ -11,6 +11,11 @@ Key insight:
 - Healthy conjunctiva: highly vascularised → pinkish-red hue, high R channel
 - Anaemic conjunctiva: pale → lower R relative to G/B
 
+Input validity: the heuristic is defined on *conjunctival* RGB means only.
+Face-skin RGB varies far more with melanin, white balance and lighting than
+with haemoglobin, so callers must not pass face-centre ROI means. Use
+``anemia_not_applicable`` when no conjunctival ROI was captured.
+
 Privacy: Only scalar indicators computed from on-device frame means are
 processed here. No image data ever reaches this function.
 """
@@ -36,6 +41,29 @@ class AnemiaScreenResult:
     wellness_label: str | None
     confidence: float
     flags: list[str] = field(default_factory=list)
+    applicable: bool = True
+    not_applicable_reason: str | None = None
+
+
+ANEMIA_NOT_APPLICABLE_NO_CONJUNCTIVAL_ROI = "no_conjunctival_roi"
+
+
+def anemia_not_applicable(
+    reason: str = ANEMIA_NOT_APPLICABLE_NO_CONJUNCTIVAL_ROI,
+) -> AnemiaScreenResult:
+    """Result for scans where the conjunctival colour heuristic does not apply.
+
+    Standard facial scans only carry face-centre ROI means, which are not a
+    valid input for this heuristic, so no score or label is produced.
+    """
+    return AnemiaScreenResult(
+        hb_proxy_score=None,
+        wellness_label=None,
+        confidence=0.0,
+        flags=["anemia_not_applicable", f"anemia_not_applicable_reason:{reason}"],
+        applicable=False,
+        not_applicable_reason=reason,
+    )
 
 
 def screen_anemia(

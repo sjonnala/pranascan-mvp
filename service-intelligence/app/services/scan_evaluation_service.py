@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.schemas.scan import ScanResultSubmit, ScanType
-from app.services.anemia_screen import screen_anemia
+from app.services.anemia_screen import AnemiaScreenResult, anemia_not_applicable, screen_anemia
 from app.services.morphology_processor import process_morphology_frames
 from app.services.quality_gate import run_quality_gate
-from app.services.rppg_processor import build_frame_samples, process_frames
+from app.services.rppg_processor import RppgResult, build_frame_samples, process_frames
 from app.services.skin_tone import apply_skin_tone_calibration
 from app.services.vascular_age import estimate_vascular_age
 from app.services.vitals_extraction import ExtractedVitals
@@ -29,6 +29,25 @@ class ScanEvaluation:
     hb_proxy_score: float | None
     anemia_wellness_label: str | None
     anemia_confidence: float | None
+    # Phase 0: both quality signals are surfaced separately; neither hides the
+    # other. ``submission.quality_score`` carries the spectral score whenever
+    # server-side rPPG reached spectral analysis.
+    mobile_quality_score: float = 0.0
+    spectral_quality_score: float | None = None
+    spectral_snr_db: float | None = None
+    effective_fps: float | None = None
+    hr_abstained: bool = False
+    hr_abstention_reason: str | None = None
+    anemia_applicable: bool = False
+    anemia_not_applicable_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class _RppgOutcome:
+    submission: ScanResultSubmit
+    flags: list[str]
+    stiffness_index: float | None
+    rppg: RppgResult | None = None
 
 
 def evaluate_scan_submission(
@@ -36,31 +55,47 @@ def evaluate_scan_submission(
     extracted_vitals: ExtractedVitals | None = None,
 ) -> ScanEvaluation:
     """Apply deterministic scan processing without persistence or user-state concerns."""
-    processed_submission, rppg_flags, stiffness_index = _apply_server_side_rppg(submission)
+    mobile_quality_score = submission.quality_score
+    outcome = _apply_server_side_rppg(submission)
+    processed_submission = outcome.submission
+    rppg = outcome.rppg
+    hr_abstained = bool(rppg is not None and rppg.abstained)
+
     processed_submission = _apply_server_side_voice_dsp(processed_submission)
-    processed_submission, spo2 = _apply_extracted_vitals(processed_submission, extracted_vitals)
+    if not hr_abstained:
+        processed_submission, spo2 = _apply_extracted_vitals(processed_submission, extracted_vitals)
+    else:
+        # Respect the abstention: do not backfill HR/HRV from another source.
+        spo2 = extracted_vitals.spo2 if extracted_vitals is not None else None
 
     gate = run_quality_gate(processed_submission)
-    combined_flags = list(dict.fromkeys(gate.flags + rppg_flags))
+
+    spectral_quality_score = None
+    spectral_snr_db = None
+    if rppg is not None and rppg.snr_db is not None:
+        spectral_quality_score = rppg.quality_score
+        spectral_snr_db = rppg.snr_db
+
+    quality_flags = [f"mobile_quality_score:{mobile_quality_score:.4f}"]
+    if spectral_quality_score is not None:
+        quality_flags.append(f"spectral_quality_score:{spectral_quality_score:.4f}")
+        quality_flags.append(f"spectral_snr_db:{spectral_snr_db:.2f}")
 
     vascular_age = estimate_vascular_age(
         processed_submission.hr_bpm,
         processed_submission.hrv_ms,
     )
-    anemia = None
+    anemia: AnemiaScreenResult | None = None
     if submission.scan_type == ScanType.STANDARD:
-        anemia = screen_anemia(
-            r_mean=processed_submission.frame_r_mean,
-            g_mean=processed_submission.frame_g_mean,
-            b_mean=processed_submission.frame_b_mean,
-            lighting_score=processed_submission.lighting_score,
-            motion_score=processed_submission.motion_score,
-        )
+        anemia = _screen_anemia_if_applicable(processed_submission)
+
+    anemia_flags = anemia.flags if anemia is not None and not anemia.applicable else []
+    combined_flags = list(dict.fromkeys(gate.flags + outcome.flags + quality_flags + anemia_flags))
 
     return ScanEvaluation(
         submission=processed_submission,
         spo2=spo2,
-        stiffness_index=stiffness_index,
+        stiffness_index=outcome.stiffness_index,
         flags=combined_flags,
         warnings=gate.warnings,
         quality_gate_passed=gate.passed,
@@ -69,25 +104,53 @@ def evaluate_scan_submission(
         vascular_age_confidence=vascular_age.confidence,
         hb_proxy_score=anemia.hb_proxy_score if anemia is not None else None,
         anemia_wellness_label=anemia.wellness_label if anemia is not None else None,
-        anemia_confidence=anemia.confidence if anemia is not None else None,
+        anemia_confidence=(anemia.confidence if anemia is not None and anemia.applicable else None),
+        mobile_quality_score=mobile_quality_score,
+        spectral_quality_score=spectral_quality_score,
+        spectral_snr_db=spectral_snr_db,
+        effective_fps=rppg.effective_fps if rppg is not None else None,
+        hr_abstained=hr_abstained,
+        hr_abstention_reason=rppg.abstention_reason if rppg is not None else None,
+        anemia_applicable=bool(anemia is not None and anemia.applicable),
+        anemia_not_applicable_reason=(anemia.not_applicable_reason if anemia is not None else None),
     )
 
 
-def _apply_server_side_rppg(
-    submission: ScanResultSubmit,
-) -> tuple[ScanResultSubmit, list[str], float | None]:
-    rppg_flags: list[str] = []
+def _screen_anemia_if_applicable(submission: ScanResultSubmit) -> AnemiaScreenResult:
+    """Run the conjunctival colour heuristic only on explicit conjunctival ROI input.
+
+    Standard facial scans carry face-centre ROI means (``frame_*_mean``), which
+    are not a valid input for the heuristic, so they are marked not applicable.
+    """
+    conjunctival = (
+        submission.conjunctival_r_mean,
+        submission.conjunctival_g_mean,
+        submission.conjunctival_b_mean,
+    )
+    if any(channel is None for channel in conjunctival):
+        return anemia_not_applicable()
+
+    return screen_anemia(
+        r_mean=submission.conjunctival_r_mean,
+        g_mean=submission.conjunctival_g_mean,
+        b_mean=submission.conjunctival_b_mean,
+        lighting_score=submission.lighting_score,
+        motion_score=submission.motion_score,
+    )
+
+
+def _apply_server_side_rppg(submission: ScanResultSubmit) -> _RppgOutcome:
     if not submission.frame_data:
-        return submission, rppg_flags, None
+        return _RppgOutcome(submission=submission, flags=[], stiffness_index=None)
 
     frames = build_frame_samples([frame.model_dump() for frame in submission.frame_data])
     if submission.scan_type == ScanType.DEEP_DIVE:
+        # Contact-PPG morphology path: out of Phase 0 scope, behaviour unchanged.
         morphology = process_morphology_frames(frames, submission.user_height_cm)
-        rppg_flags = morphology.flags
         if morphology.hr_bpm is None:
-            return submission, rppg_flags, morphology.stiffness_index
+            return _RppgOutcome(submission, morphology.flags, morphology.stiffness_index)
 
-        return (
+        return _RppgOutcome(
             submission.model_copy(
                 update={
                     "hr_bpm": morphology.hr_bpm,
@@ -95,28 +158,60 @@ def _apply_server_side_rppg(
                     "quality_score": max(submission.quality_score, morphology.quality_score),
                 }
             ),
-            rppg_flags,
+            morphology.flags,
             morphology.stiffness_index,
         )
 
     rppg = process_frames(frames)
-    rppg, _skin_calibration = apply_skin_tone_calibration(rppg, frames)
-    rppg_flags = rppg.flags
+    rppg, _skin_tone_metadata = apply_skin_tone_calibration(rppg, frames)
+
+    if rppg.snr_db is None:
+        # The trace never reached spectral analysis (too short, flat, corrupt
+        # timestamps). Nothing to override; keep the submission as received.
+        return _RppgOutcome(submission, rppg.flags, None, rppg)
+
+    if rppg.abstained:
+        # "No pulse": the server's spectral evidence is authoritative, so the
+        # scan reports no HR/HRV/respiration rather than any client value.
+        return _RppgOutcome(
+            submission.model_copy(
+                update={
+                    "hr_bpm": None,
+                    "hrv_ms": None,
+                    "respiratory_rate": None,
+                    "quality_score": rppg.quality_score,
+                }
+            ),
+            rppg.flags,
+            None,
+            rppg,
+        )
 
     if rppg.hr_bpm is None:
-        return submission, rppg_flags, None
+        # Spectral analysis ran but peak detection failed: keep the previous
+        # behaviour for HR fields, but report the honest spectral quality.
+        return _RppgOutcome(
+            submission.model_copy(update={"quality_score": rppg.quality_score}),
+            rppg.flags,
+            None,
+            rppg,
+        )
 
-    return (
+    return _RppgOutcome(
         submission.model_copy(
             update={
                 "hr_bpm": rppg.hr_bpm,
+                # None when withheld (hrv_withheld_low_fps): never keep a client value.
                 "hrv_ms": rppg.hrv_ms,
                 "respiratory_rate": rppg.respiratory_rate,
-                "quality_score": max(submission.quality_score, rppg.quality_score),
+                # No max(mobile, spectral): the spectral score is reported as-is
+                # and the mobile heuristic is surfaced separately.
+                "quality_score": rppg.quality_score,
             }
         ),
-        rppg_flags,
+        rppg.flags,
         None,
+        rppg,
     )
 
 

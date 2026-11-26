@@ -3,23 +3,34 @@ POS-based rPPG processor for centre-ROI RGB traces.
 
 Algorithm:
   1. Validate the RGB trace: frame count, timestamp order, and temporal span.
+     Isolated duplicate / out-of-order millisecond timestamps (typical of a
+     JS-thread stall draining queued samples) are repaired instead of
+     rejecting the scan; the scan is rejected only when more than
+     ``MAX_CORRUPTED_TIMESTAMP_FRACTION`` of frames are corrupted.
   2. Resample sparse traces onto a regular timeline. The production target is
      30 FPS; lower-rate traces are upsampled to preserve a stable filter path.
-  3. Apply POS (Plane-Orthogonal-to-Skin) projection across the RGB channels to
-     derive a Blood Volume Pulse (BVP) waveform.
+  3. Apply windowed POS (Plane-Orthogonal-to-Skin, Wang et al. 2017,
+     Algorithm 1): temporal normalisation and the alpha projection are done
+     per short window (default 1.6 s) and overlap-added, so auto-exposure and
+     white-balance changes are normalised locally instead of over 30 s.
   4. Bandpass filter the BVP to the cardiac band (0.7-4.0 Hz).
-  5. Estimate the dominant cardiac frequency, then detect peaks with a spacing
-     constraint derived from that frequency.
-  6. Compute heart rate from the mean inter-beat interval and HRV via RMSSD.
-  7. Estimate a respiratory proxy from the low-frequency envelope of the BVP.
-  8. Score signal quality as cardiac-band power over total BVP power.
+  5. Estimate the dominant cardiac frequency and a spectral SNR around it.
+  6. Abstain when spectral quality or SNR is below threshold: return
+     ``hr_bpm=None`` / ``hrv_ms=None`` with explicit abstention flags rather
+     than reporting a heart rate from noise.
+  7. Otherwise detect peaks with a spacing constraint derived from the
+     dominant frequency and compute heart rate from the mean inter-beat
+     interval. HRV (RMSSD) is withheld when the effective delivered frame
+     rate is below ``MIN_HRV_FPS``.
+  8. Estimate a respiratory proxy from the low-frequency envelope of the BVP.
 
 Input contract:
   frame_data: list of FrameSample (t_ms, r_mean, g_mean, b_mean)
   Expected acquisition: ~30 FPS RGB traces from Vision Camera.
 
 Output:
-  RppgResult (hr_bpm, hrv_ms, respiratory_rate, quality_score, flags)
+  RppgResult (hr_bpm, hrv_ms, respiratory_rate, quality_score, flags,
+  snr_db, effective_fps, abstained, abstention_reason)
 
 Privacy:
   Only per-frame RGB means are processed - never raw face video pixels.
@@ -27,10 +38,12 @@ Privacy:
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 from scipy import signal
 
 
@@ -53,6 +66,15 @@ class RppgResult:
     respiratory_rate: float | None
     quality_score: float
     flags: list[str]
+    # Spectral SNR (dB) around the dominant cardiac frequency; None when the
+    # trace never reached spectral analysis (validation / filter failures).
+    snr_db: float | None = None
+    # Frame rate actually delivered by the camera: (frames - 1) / span.
+    effective_fps: float | None = None
+    # True when the processor declined to report a heart rate because the
+    # spectral evidence for a pulse was too weak ("no pulse" abstention).
+    abstained: bool = False
+    abstention_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +86,7 @@ class RppgBvpSignal:
     sample_rate_hz: float
     quality_score: float
     flags: list[str]
+    effective_fps: float | None = None
 
 
 MIN_FRAMES = 60
@@ -78,11 +101,42 @@ BUTTER_ORDER = 4
 MIN_SPECTRAL_QUALITY = 0.05
 PEAK_DISTANCE_FRACTION = 0.65
 
+# Windowed POS (Wang et al. 2017): window length in seconds. 1.6 s is the
+# paper's default (about one cardiac cycle at 40 BPM). Configurable per call.
+POS_WINDOW_S = 1.6
 
-def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
-    """Process RGB frame traces into HR, RMSSD, and a respiratory proxy."""
+# "No pulse" abstention: minimum spectral SNR in dB, measured as power within
+# +/-SNR_FUNDAMENTAL_HALF_WIDTH_HZ of the dominant frequency and
+# +/-SNR_HARMONIC_HALF_WIDTH_HZ of its first harmonic, over the remaining
+# power in the 0.7-4.0 Hz band (de Haan & Jeanne 2013 style). Chosen from the
+# Monte-Carlo calibration in tests/test_phase0_budget_phone_fixes.py: pure
+# noise sits well below it, clean and moderately noisy pulses well above.
+MIN_SNR_DB = -3.0
+SNR_FUNDAMENTAL_HALF_WIDTH_HZ = 0.1
+SNR_HARMONIC_HALF_WIDTH_HZ = 0.2
+
+# Timestamp repair: reject the scan only when more than this fraction of the
+# frames had duplicate or out-of-order timestamps.
+MAX_CORRUPTED_TIMESTAMP_FRACTION = 0.05
+
+# HRV (RMSSD) needs beat timing finer than ~40 ms; withhold it below 25 FPS.
+MIN_HRV_FPS = 25.0
+
+
+def process_frames(
+    frames: Sequence[FrameSample],
+    *,
+    pos_window_s: float = POS_WINDOW_S,
+    min_snr_db: float = MIN_SNR_DB,
+    min_spectral_quality: float = MIN_SPECTRAL_QUALITY,
+) -> RppgResult:
+    """Process RGB frame traces into HR, RMSSD, and a respiratory proxy.
+
+    Returns ``hr_bpm=None`` with ``abstained=True`` when the spectral evidence
+    for a pulse is below ``min_spectral_quality`` or ``min_snr_db``.
+    """
     try:
-        bvp_signal = extract_bvp(frames)
+        bvp_signal = extract_bvp(frames, pos_window_s=pos_window_s)
     except ValueError as exc:
         return RppgResult(
             hr_bpm=None,
@@ -92,6 +146,7 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
             flags=[str(exc)],
         )
 
+    effective_fps = bvp_signal.effective_fps
     dominant_frequency = _dominant_frequency(
         bvp_signal.bvp,
         bvp_signal.sample_rate_hz,
@@ -105,6 +160,35 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
             respiratory_rate=None,
             quality_score=bvp_signal.quality_score,
             flags=[*bvp_signal.flags, "insufficient_peaks"],
+            effective_fps=effective_fps,
+        )
+
+    snr_db = _spectral_snr_db(bvp_signal.bvp, bvp_signal.sample_rate_hz, dominant_frequency)
+    flags = list(bvp_signal.flags)
+
+    abstention_reasons: list[str] = []
+    if bvp_signal.quality_score < min_spectral_quality:
+        abstention_reasons.append("low_spectral_quality")
+    if snr_db < min_snr_db:
+        abstention_reasons.append("low_spectral_snr")
+    if abstention_reasons:
+        flags.extend(
+            [
+                "hr_abstained",
+                "no_reliable_pulse",
+                *(f"abstain_reason:{reason}" for reason in abstention_reasons),
+            ]
+        )
+        return RppgResult(
+            hr_bpm=None,
+            hrv_ms=None,
+            respiratory_rate=None,
+            quality_score=bvp_signal.quality_score,
+            flags=list(dict.fromkeys(flags)),
+            snr_db=snr_db,
+            effective_fps=effective_fps,
+            abstained=True,
+            abstention_reason=abstention_reasons[0],
         )
 
     prominence = max(0.01, float(np.std(bvp_signal.bvp)) * 0.08)
@@ -118,7 +202,6 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
         prominence=prominence,
     )
 
-    flags = list(bvp_signal.flags)
     if len(peaks) < 3:
         flags.append("insufficient_peaks")
         return RppgResult(
@@ -127,6 +210,8 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
             respiratory_rate=None,
             quality_score=bvp_signal.quality_score,
             flags=flags,
+            snr_db=snr_db,
+            effective_fps=effective_fps,
         )
 
     peak_times = bvp_signal.timestamps_s[peaks]
@@ -139,7 +224,9 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
         hr_bpm = float(np.clip(hr_bpm, 30.0, 220.0))
 
     hrv_ms = None
-    if len(ibi_s) >= 3:
+    if effective_fps is not None and effective_fps < MIN_HRV_FPS:
+        flags.append("hrv_withheld_low_fps")
+    elif len(ibi_s) >= 3:
         rr_diffs_ms = np.diff(ibi_s * 1000.0)
         hrv_ms = round(float(np.sqrt(np.mean(rr_diffs_ms**2))), 2)
 
@@ -151,6 +238,8 @@ def process_frames(frames: Sequence[FrameSample]) -> RppgResult:
         respiratory_rate=respiratory_rate,
         quality_score=bvp_signal.quality_score,
         flags=flags,
+        snr_db=snr_db,
+        effective_fps=effective_fps,
     )
 
 
@@ -176,10 +265,18 @@ def _detrend_linear(data: np.ndarray) -> np.ndarray:
     return detrended
 
 
-def extract_bvp(frames: Sequence[FrameSample]) -> RppgBvpSignal:
-    """Project a regularised RGB trace into a POS-derived BVP waveform."""
+def extract_bvp(
+    frames: Sequence[FrameSample],
+    *,
+    pos_window_s: float = POS_WINDOW_S,
+) -> RppgBvpSignal:
+    """Project a regularised RGB trace into a windowed-POS BVP waveform."""
     flags: list[str] = []
-    timestamps_s, rgb = _validate_and_materialize(frames)
+    timestamps_s, rgb, timestamp_flags = _validate_and_materialize(frames)
+    flags.extend(timestamp_flags)
+
+    span_s = float(timestamps_s[-1] - timestamps_s[0])
+    effective_fps = round((timestamps_s.size - 1) / span_s, 2) if span_s > 0 else None
 
     diffs = np.diff(timestamps_s)
     median_dt = float(np.median(diffs[diffs > 0]))
@@ -207,9 +304,10 @@ def extract_bvp(frames: Sequence[FrameSample]) -> RppgBvpSignal:
     if float(np.max(np.std(regular_rgb, axis=0))) < 1e-3:
         raise ValueError("flat_signal")
 
-    detrended_rgb = _detrend_linear(regular_rgb)
-
-    bvp = _extract_pos_waveform(detrended_rgb)
+    # Windowed POS needs the raw (DC-bearing) channels: its per-window
+    # temporal normalisation divides by the window mean. The previous global
+    # path divided a linearly detrended (zero-mean) trace by its mean.
+    bvp = _detrend_linear(_extract_pos_waveform(regular_rgb, target_fs, pos_window_s))
     bvp_std = float(np.std(bvp))
     if bvp_std < 1e-6:
         raise ValueError("flat_signal")
@@ -234,6 +332,7 @@ def extract_bvp(frames: Sequence[FrameSample]) -> RppgBvpSignal:
         sample_rate_hz=target_fs,
         quality_score=quality_score,
         flags=flags,
+        effective_fps=effective_fps,
     )
 
 
@@ -250,7 +349,9 @@ def build_frame_samples(frame_data: list[dict]) -> list[FrameSample]:
     ]
 
 
-def _validate_and_materialize(frames: Sequence[FrameSample]) -> tuple[np.ndarray, np.ndarray]:
+def _validate_and_materialize(
+    frames: Sequence[FrameSample],
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
     if len(frames) < MIN_FRAMES:
         raise ValueError("insufficient_frames")
 
@@ -263,27 +364,144 @@ def _validate_and_materialize(frames: Sequence[FrameSample]) -> tuple[np.ndarray
         ]
     )
 
-    diffs = np.diff(timestamps_s)
-    if diffs.size == 0 or int(np.sum(diffs <= 0)) > 1:
+    if timestamps_s.size < 2:
         raise ValueError("irregular_timestamps")
+
+    timestamps_s, rgb, corrupted = _repair_timestamps(timestamps_s, rgb)
+    if corrupted > MAX_CORRUPTED_TIMESTAMP_FRACTION * len(frames):
+        raise ValueError("irregular_timestamps")
+
+    flags: list[str] = []
+    if corrupted > 0:
+        flags.append("duplicate_timestamps_repaired")
+
+    if timestamps_s.size < MIN_FRAMES:
+        raise ValueError("insufficient_frames")
 
     if float(timestamps_s[-1] - timestamps_s[0]) < MIN_TEMPORAL_SPAN_S:
         raise ValueError("insufficient_temporal_span")
 
-    return timestamps_s, rgb
+    return timestamps_s, rgb, flags
 
 
-def _extract_pos_waveform(rgb: np.ndarray) -> np.ndarray:
-    channel_mean = np.mean(rgb, axis=0, keepdims=True)
-    channel_mean[channel_mean == 0.0] = 1.0
-    normalized = (rgb / channel_mean) - 1.0
+def _repair_timestamps(
+    timestamps_s: np.ndarray,
+    rgb: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """Repair isolated JS-stall timestamp glitches.
 
-    s1 = normalized[:, 1] - normalized[:, 2]
-    s2 = (-2.0 * normalized[:, 0]) + normalized[:, 1] + normalized[:, 2]
-    s2_std = float(np.std(s2))
-    alpha = float(np.std(s1) / s2_std) if s2_std > 1e-6 else 0.0
+    Mobile stamps samples on the JS thread; a stall makes queued samples drain
+    back-to-back with identical (or, rarely, earlier) millisecond stamps.
 
-    return _detrend_linear(s1 + alpha * s2)
+    - Out-of-order samples (stamp earlier than an already accepted sample) are
+      dropped.
+    - Runs of identical stamps are kept and nudged: the k samples of a run are
+      spread evenly between the run's stamp and the next distinct stamp (or by
+      the median frame interval at the end of the trace).
+
+    Returns the repaired arrays and the number of corrupted frames (dropped
+    plus nudged), so the caller can reject traces that are mostly corrupt.
+    """
+    keep = np.ones(timestamps_s.size, dtype=bool)
+    running_max = -math.inf
+    for index, stamp in enumerate(timestamps_s):
+        if stamp < running_max:
+            keep[index] = False
+        else:
+            running_max = stamp
+    dropped = int(np.sum(~keep))
+    timestamps_s = timestamps_s[keep].copy()
+    rgb = rgb[keep]
+
+    diffs = np.diff(timestamps_s)
+    if not np.any(diffs == 0):
+        return timestamps_s, rgb, dropped
+
+    positive = diffs[diffs > 0]
+    if positive.size == 0:
+        raise ValueError("irregular_timestamps")
+    median_dt = float(np.median(positive))
+
+    nudged = 0
+    start = 0
+    count = timestamps_s.size
+    while start < count:
+        end = start
+        while end + 1 < count and timestamps_s[end + 1] == timestamps_s[start]:
+            end += 1
+        run_length = end - start + 1
+        if run_length > 1:
+            nudged += run_length - 1
+            base = timestamps_s[start]
+            step = (timestamps_s[end + 1] - base) / run_length if end + 1 < count else median_dt
+            for offset in range(1, run_length):
+                timestamps_s[start + offset] = base + offset * step
+        start = end + 1
+
+    return timestamps_s, rgb, dropped + nudged
+
+
+def _extract_pos_waveform(
+    rgb: np.ndarray,
+    sample_rate_hz: float,
+    window_s: float = POS_WINDOW_S,
+) -> np.ndarray:
+    """Windowed POS with overlap-add (Wang et al. 2017, Algorithm 1).
+
+    For every window of ``window_s`` seconds (stride one sample):
+      Cn = C / mean(C)                 temporal normalisation per window
+      S1 = Gn - Bn,  S2 = Gn + Bn - 2Rn  projection onto the POS plane
+      h  = S1 + (std(S1) / std(S2)) * S2
+      H[window] += h - mean(h)         overlap-add
+    """
+    if window_s <= 0:
+        raise ValueError("invalid_pos_window")
+
+    sample_count = rgb.shape[0]
+    window_len = max(2, int(math.ceil(window_s * sample_rate_hz)))
+    window_len = min(window_len, sample_count)
+
+    windows = sliding_window_view(rgb, window_len, axis=0)  # (n_windows, 3, window_len)
+    window_means = np.mean(windows, axis=2, keepdims=True)
+    window_means = np.where(np.abs(window_means) < 1e-9, 1.0, window_means)
+    normalized = windows / window_means
+
+    s1 = normalized[:, 1, :] - normalized[:, 2, :]
+    s2 = (-2.0 * normalized[:, 0, :]) + normalized[:, 1, :] + normalized[:, 2, :]
+    s1_std = np.std(s1, axis=1)
+    s2_std = np.std(s2, axis=1)
+    alpha = np.divide(s1_std, s2_std, out=np.zeros_like(s1_std), where=s2_std > 1e-12)
+
+    h = s1 + alpha[:, None] * s2
+    h = h - np.mean(h, axis=1, keepdims=True)
+
+    n_windows = h.shape[0]
+    indices = np.arange(n_windows)[:, None] + np.arange(window_len)[None, :]
+    pulse = np.zeros(sample_count, dtype=np.float64)
+    np.add.at(pulse, indices.ravel(), h.ravel())
+    return pulse
+
+
+def _spectral_snr_db(trace: np.ndarray, sample_rate_hz: float, fundamental_hz: float) -> float:
+    """Spectral SNR (dB) of a cardiac-band trace around a fundamental frequency.
+
+    Signal = power within +/-0.1 Hz of the fundamental and +/-0.2 Hz of its
+    first harmonic; noise = all other power in the 0.7-4.0 Hz band.
+    """
+    frequencies, power = signal.periodogram(trace, fs=sample_rate_hz)
+    band = (frequencies >= HR_LOW_HZ) & (frequencies <= HR_HIGH_HZ)
+    signal_mask = band & (
+        (np.abs(frequencies - fundamental_hz) <= SNR_FUNDAMENTAL_HALF_WIDTH_HZ)
+        | (np.abs(frequencies - 2.0 * fundamental_hz) <= SNR_HARMONIC_HALF_WIDTH_HZ)
+    )
+    noise_mask = band & ~signal_mask
+    signal_power = float(np.sum(power[signal_mask]))
+    noise_power = float(np.sum(power[noise_mask]))
+    if signal_power <= 0.0:
+        return -math.inf
+    if noise_power <= 1e-30:
+        return math.inf
+    return round(10.0 * math.log10(signal_power / noise_power), 2)
 
 
 def _bandpass_signal(
