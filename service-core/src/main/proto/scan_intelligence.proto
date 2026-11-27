@@ -48,6 +48,14 @@ message ScanEvaluationRequest {
   optional double frame_b_mean = 18;
   ScanType scan_type = 19;
   optional double user_height_cm = 20;
+
+  // Contract revision 2 (T-401/T-403). Additive only: no rev-1 number, name,
+  // type or presence changes. Absent sub-messages mean "peer did not send it".
+  CaptureTiming capture_timing = 21;
+  DeviceProfile device_profile = 22;
+  ConjunctivalRoiMeans conjunctival_roi = 23;
+  ProcessingContext processing_context = 24;
+  uint32 contract_revision = 25; // absent/0 = rev 1
 }
 
 message ScanEvaluationResponse {
@@ -72,4 +80,169 @@ message ScanEvaluationResponse {
   optional double hb_proxy_score = 19;
   optional string anemia_wellness_label = 20;
   optional double anemia_confidence = 21;
+
+  // Contract revision 2 (T-401/T-403). Typed replacements for the encoded
+  // "key:value" diagnostics that rev-1 packs into `flags`.
+  QualityBreakdown quality = 22;
+  RppgAssessment rppg = 23;
+  AnemiaAssessment anemia = 24;
+  VoiceAssessment voice = 25;
+  uint32 contract_revision = 26; // absent/0 = rev 1
+}
+
+// ---------------------------------------------------------------------------
+// Contract revision 2 sub-messages. Wellness indicators only, never diagnoses.
+// ---------------------------------------------------------------------------
+
+message CaptureTiming {
+  optional double delivered_fps = 1;
+  optional double fps_jitter_ms = 2;
+  optional double mean_frame_interval_ms = 3;
+  FrameTimestampSource frame_timestamp_source = 4;
+  uint32 hardware_timestamp_count = 5;
+  uint32 fallback_timestamp_count = 6;
+  uint32 dropped_duplicate_frame_count = 7;
+}
+
+message DeviceProfile {
+  string device_model = 1;
+  DevicePlatform platform = 2;
+  string os_version = 3;
+  string app_version = 4;
+  CapturePath capture_path = 5;
+  ColorRange color_range = 6;
+  LockState ae_lock = 7;
+  LockState awb_lock = 8;
+}
+
+message ConjunctivalRoiMeans {
+  double r_mean = 1;
+  double g_mean = 2;
+  double b_mean = 3;
+}
+
+// Consent purposes core has already verified, so intelligence stays
+// compute-only and never queries consent itself.
+message ProcessingContext {
+  repeated ProcessingPurpose granted_purposes = 1;
+  string consent_notice_version = 2;
+}
+
+message QualityBreakdown {
+  optional double mobile_quality_score = 1;
+  optional double spectral_quality_score = 2;
+  optional double spectral_snr_db = 3;
+  QualityScoreBasis quality_score_basis = 4;
+}
+
+message RppgAssessment {
+  HrStatus hr_status = 1;
+  HrAbstentionReason abstention_reason = 2;
+  optional double effective_fps = 3;
+  bool hrv_withheld_low_fps = 4;
+}
+
+message AnemiaAssessment {
+  AnemiaApplicability applicability = 1;
+  AnemiaNotApplicableReason not_applicable_reason = 2;
+}
+
+message VoiceAssessment {
+  VoiceStatus status = 1;
+  repeated VoiceAbstentionReason abstention_reasons = 2;
+  bool client_values_cleared = 3;
+  optional double clip_fraction = 4;
+  bool shimmer_withheld_low_hnr = 5;
+  optional double speech_probability = 6; // reserved for the T-203 speech gate; unset until it ships
+}
+
+enum FrameTimestampSource {
+  FRAME_TIMESTAMP_SOURCE_UNSPECIFIED = 0;
+  FRAME_TIMESTAMP_SOURCE_HARDWARE = 1;
+  FRAME_TIMESTAMP_SOURCE_WALL_CLOCK = 2;
+  FRAME_TIMESTAMP_SOURCE_MIXED = 3;
+}
+
+enum DevicePlatform {
+  DEVICE_PLATFORM_UNSPECIFIED = 0;
+  DEVICE_PLATFORM_ANDROID = 1;
+  DEVICE_PLATFORM_IOS = 2;
+}
+
+enum CapturePath {
+  CAPTURE_PATH_UNSPECIFIED = 0;
+  CAPTURE_PATH_RGB_FALLBACK = 1;
+  CAPTURE_PATH_YUV_PLUGIN = 2;
+}
+
+enum ColorRange {
+  COLOR_RANGE_UNSPECIFIED = 0;
+  COLOR_RANGE_FULL = 1;
+  COLOR_RANGE_LIMITED = 2;
+}
+
+enum LockState {
+  LOCK_STATE_UNSPECIFIED = 0;
+  LOCK_STATE_CONFIRMED = 1;
+  LOCK_STATE_REQUESTED = 2;
+  LOCK_STATE_IGNORED = 3;
+  LOCK_STATE_UNSUPPORTED = 4;
+}
+
+enum ProcessingPurpose {
+  PROCESSING_PURPOSE_UNSPECIFIED = 0;
+  PROCESSING_PURPOSE_SCAN_ONEOFF = 1;
+  PROCESSING_PURPOSE_TREND_LONGITUDINAL = 2;
+  PROCESSING_PURPOSE_RESEARCH_MODEL_TRAINING = 3;
+}
+
+enum QualityScoreBasis {
+  QUALITY_SCORE_BASIS_UNSPECIFIED = 0;
+  QUALITY_SCORE_BASIS_LEGACY_MAX_OF_MOBILE_AND_SPECTRAL = 1;
+  QUALITY_SCORE_BASIS_SPECTRAL = 2;
+  QUALITY_SCORE_BASIS_MOBILE_ONLY = 3;
+}
+
+enum HrStatus {
+  HR_STATUS_UNSPECIFIED = 0;
+  HR_STATUS_MEASURED = 1;
+  HR_STATUS_ABSTAINED = 2;
+  HR_STATUS_NOT_ATTEMPTED = 3;
+}
+
+enum HrAbstentionReason {
+  HR_ABSTENTION_REASON_UNSPECIFIED = 0;
+  HR_ABSTENTION_REASON_LOW_SPECTRAL_QUALITY = 1;
+  HR_ABSTENTION_REASON_LOW_SPECTRAL_SNR = 2;
+  HR_ABSTENTION_REASON_FLAT_SIGNAL = 3;
+  HR_ABSTENTION_REASON_INSUFFICIENT_PEAKS = 4;
+}
+
+enum AnemiaApplicability {
+  ANEMIA_APPLICABILITY_UNSPECIFIED = 0;
+  ANEMIA_APPLICABILITY_APPLICABLE = 1;
+  ANEMIA_APPLICABILITY_NOT_APPLICABLE = 2;
+}
+
+enum AnemiaNotApplicableReason {
+  ANEMIA_NOT_APPLICABLE_REASON_UNSPECIFIED = 0;
+  ANEMIA_NOT_APPLICABLE_REASON_NO_CONJUNCTIVAL_ROI = 1;
+  ANEMIA_NOT_APPLICABLE_REASON_SCAN_TYPE_NOT_SUPPORTED = 2;
+}
+
+enum VoiceStatus {
+  VOICE_STATUS_UNSPECIFIED = 0;
+  VOICE_STATUS_MEASURED = 1;
+  VOICE_STATUS_ABSTAINED = 2;
+  VOICE_STATUS_NOT_SUBMITTED = 3;
+}
+
+enum VoiceAbstentionReason {
+  VOICE_ABSTENTION_REASON_UNSPECIFIED = 0;
+  VOICE_ABSTENTION_REASON_INSUFFICIENT_SAMPLES = 1;
+  VOICE_ABSTENTION_REASON_CLIPPING_DETECTED = 2;
+  VOICE_ABSTENTION_REASON_NO_VOICE_DETECTED = 3;
+  VOICE_ABSTENTION_REASON_INSUFFICIENT_VOICED_DURATION = 4;
+  VOICE_ABSTENTION_REASON_HIGH_NOISE = 5;
+  VOICE_ABSTENTION_REASON_INSUFFICIENT_GLOTTAL_CYCLES = 6;
 }
