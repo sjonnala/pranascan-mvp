@@ -4,7 +4,8 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main, develop]
+    # feat/** and fix/** let stacked draft PRs (base = another feature branch) run CI too.
+    branches: [main, develop, "feat/**", "fix/**"]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -37,6 +38,47 @@ jobs:
       # stdlib only: fails if raw frames/audio/Mel/landmarks reach a log, audit or analytics
       # sink, or a Fitzpatrick class reaches one outside a consent check.
       - run: python scripts/check_privacy_boundaries.py
+
+  proto-contract-drift:
+    name: Proto Contract — pb2 Drift Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      # Same pins as service-intelligence/requirements*.txt, so a fresh protoc run must
+      # reproduce the checked-in stubs byte for byte.
+      - run: pip install grpcio-tools==1.63.0 protobuf==5.26.1
+      - run: python scripts/check_proto_pb2_drift.py
+
+  service-core-flyway:
+    name: Service Core — Flyway V1–V10 on Postgres 16
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: pranascan_core
+          POSTGRES_USER: pranascan
+          POSTGRES_PASSWORD: testpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGHOST: localhost
+      PGUSER: pranascan
+      PGPASSWORD: testpassword
+      PGDATABASE: pranascan_core
+    steps:
+      - uses: actions/checkout@v6
+      # Plain psql (preinstalled on the runner): applies the real Flyway scripts in
+      # version order with legacy rows seeded between V7 and V8, then runs the probes.
+      - run: bash scripts/ci/verify_core_migrations.sh
 
   service-intelligence-test:
     name: Service Intelligence — Pytest
